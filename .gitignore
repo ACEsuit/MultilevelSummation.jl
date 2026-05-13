@@ -1,0 +1,8 @@
+docs/build/
+docs/Manifest.toml
+benchmark/Manifest.toml
+benchmark/tune.json
+benchmark/results.json
+Manifest.toml
+*.cov
+.DS_Store
