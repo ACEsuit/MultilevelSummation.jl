@@ -1,14 +1,20 @@
 using Documenter
 using MultilevelSummation
 
-DocMeta.setdocmeta!(MultilevelSummation, :DocTestSetup, :(using MultilevelSummation); recursive=true)
+DocMeta.setdocmeta!(MultilevelSummation, :DocTestSetup,
+                    :(using MultilevelSummation); recursive=true)
+
+# Point Documenter at the GitHub repo so source links + deploydocs work.
+# Change the org/repo here if the package moves elsewhere.
+const REPO = Documenter.Remotes.GitHub("ACEsuit", "MultilevelSummation.jl")
 
 makedocs(;
     modules  = [MultilevelSummation],
     sitename = "MultilevelSummation.jl",
     authors  = "Christoph Ortner and contributors",
-    remotes  = nothing,
+    repo     = REPO,
     format = Documenter.HTML(;
+        canonical = "https://ACEsuit.github.io/MultilevelSummation.jl",
         edit_link = "main",
         assets    = String[],
         prettyurls = get(ENV, "CI", "false") == "true",
@@ -29,4 +35,11 @@ makedocs(;
         "Internals notes" => "internals.md",
     ],
     warnonly = [:missing_docs, :cross_references],
+)
+
+# Skipped automatically when ENV["CI"] != "true" or the git ref is wrong.
+deploydocs(;
+    repo = "github.com/ACEsuit/MultilevelSummation.jl.git",
+    devbranch = "main",
+    push_preview = true,
 )
