@@ -1,4 +1,4 @@
-name = "MLSum"
+name = "MultilevelSummation"
 uuid = "8c6e5870-99c4-4685-beb5-7acb5afddbe8"
 version = "0.0.1-DEV"
 authors = ["Christoph Ortner"]

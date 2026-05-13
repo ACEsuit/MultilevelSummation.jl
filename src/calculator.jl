@@ -17,7 +17,7 @@ The charge property name is read from `calc.charge_property` (default
 `:charge`).
 """
 function _strip_to_core(sys::AbstractSystem,
-                        calc::MLSumCalculator{T}) where {T<:AbstractFloat}
+                        calc::MSMCalculator{T}) where {T<:AbstractFloat}
     D = n_dimensions(sys)
     N = length(sys)
     pers = periodicity(sys)
@@ -46,18 +46,18 @@ function _strip_to_core(sys::AbstractSystem,
 end
 
 # --- AtomsCalculators interface ----------------------------------------------
-# We extend the generic methods to accept an MLSumCalculator. They convert the
+# We extend the generic methods to accept an MSMCalculator. They convert the
 # AtomsBase system to raw arrays and delegate to the numerical core.
 
 function AtomsCalculators.potential_energy(sys::AbstractSystem,
-                                            calc::MLSumCalculator;
+                                            calc::MSMCalculator;
                                             kwargs...)
     positions, charges, cell, periodic = _strip_to_core(sys, calc)
     return msm_energy(positions, charges, cell, periodic, calc)
 end
 
 function AtomsCalculators.forces(sys::AbstractSystem,
-                                  calc::MLSumCalculator;
+                                  calc::MSMCalculator;
                                   kwargs...)
     positions, charges, cell, periodic = _strip_to_core(sys, calc)
     _, F = msm_energy_forces(positions, charges, cell, periodic, calc)
@@ -66,7 +66,7 @@ end
 
 function AtomsCalculators.forces!(F::AbstractVector{<:SVector{D,T}},
                                    sys::AbstractSystem,
-                                   calc::MLSumCalculator{T};
+                                   calc::MSMCalculator{T};
                                    kwargs...) where {D,T}
     positions, charges, cell, periodic = _strip_to_core(sys, calc)
     _, Fout = msm_energy_forces(positions, charges, cell, periodic, calc)
@@ -78,7 +78,7 @@ function AtomsCalculators.forces!(F::AbstractVector{<:SVector{D,T}},
 end
 
 function AtomsCalculators.energy_forces(sys::AbstractSystem,
-                                         calc::MLSumCalculator;
+                                         calc::MSMCalculator;
                                          kwargs...)
     positions, charges, cell, periodic = _strip_to_core(sys, calc)
     U, F = msm_energy_forces(positions, charges, cell, periodic, calc)

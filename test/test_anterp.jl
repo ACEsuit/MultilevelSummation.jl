@@ -1,5 +1,5 @@
 using Test
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 

@@ -1,5 +1,5 @@
 using Test
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 
@@ -30,7 +30,7 @@ using .EwaldRef: ewald_energy, ewald_energy_forces
         a = 4.0
         h = 0.2
         L = 3
-        calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+        calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
 
         U_msm   = msm_energy(positions, charges, cell, periodic, calc)
         U_naive = naive_energy(positions, charges, cell, periodic, K)
@@ -54,7 +54,7 @@ using .EwaldRef: ewald_energy, ewald_energy_forces
         L = 3
         errs = Float64[]
         for a in (0.8, 1.6, 3.2)
-            calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+            calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
             U = msm_energy(positions, charges, cell, periodic, calc)
             push!(errs, abs(U - U_naive) / max(abs(U_naive), 1e-10))
         end
@@ -71,7 +71,7 @@ using .EwaldRef: ewald_energy, ewald_energy_forces
         a = 1.6
         h = 0.2
         L = 3
-        calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+        calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
 
         U0 = msm_energy(positions, charges, cell, periodic, calc)
         # Translate ALL particles by the same vector — origin tracks, so U stays.
@@ -107,7 +107,7 @@ end
     # As a grows the splitting error shrinks; check that MSM tracks Ewald.
     errs = Float64[]
     for a in (1.5, 2.0, 3.0)
-        calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+        calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
         U_msm = msm_energy(positions, charges, cell, periodic, calc)
         @test isfinite(U_msm)
         push!(errs, abs(U_msm - U_ewald) / abs(U_ewald))
@@ -132,7 +132,7 @@ end
 
     a = 2.0
     basis = CubicC1()
-    calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+    calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
     U, F = msm_energy_forces(positions, charges, cell, periodic, calc)
     f_of(p) = msm_energy(p, charges, cell, periodic, calc)
 
@@ -160,7 +160,7 @@ end
 
     a = 2.0
     basis = CubicC1()
-    calc = MLSumCalculator(HardyC2Cubic(a, L), basis, h)
+    calc = MSMCalculator(HardyC2Cubic(a, L), basis, h)
 
     U0 = msm_energy(positions, charges, cell, periodic, calc)
     # Translate by a full lattice vector → exact invariance.

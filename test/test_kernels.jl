@@ -1,5 +1,5 @@
 using Test
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 
@@ -14,7 +14,7 @@ using StableRNGs
             # value
             @test K(r) ≈ 1 / s^N
             # gradient by finite differences
-            g = MLSum.grad(K, r)
+            g = MultilevelSummation.grad(K, r)
             for α in 1:D
                 δ = 1e-6
                 e = SVector{D,Float64}(ntuple(β -> β == α ? δ : 0.0, D)...)
@@ -28,7 +28,7 @@ using StableRNGs
         K = InversePower{N,Float32}()
         r = SVector{3,Float32}(1.5f0, -0.3f0, 0.7f0)
         @test K(r) isa Float32
-        @test MLSum.grad(K, r) isa SVector{3,Float32}
+        @test MultilevelSummation.grad(K, r) isa SVector{3,Float32}
     end
 
     @testset "Coulomb alias" begin
@@ -44,7 +44,7 @@ using StableRNGs
             s = sqrt(sum(abs2, r))
             @test K(r) ≈ 1 / (1 + (s / r₀)^N)
             # gradient by FD (away from origin; safe for N >= 2)
-            g = MLSum.grad(K, r)
+            g = MultilevelSummation.grad(K, r)
             for α in 1:D
                 δ = 1e-6
                 e = SVector{D,Float64}(ntuple(β -> β == α ? δ : 0.0, D)...)

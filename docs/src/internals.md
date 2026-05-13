@@ -9,7 +9,7 @@ The package is structured in two layers:
 
 1. **Numerical core** (`src/core.jl` and most of `src/*.jl`). Pure
    numerical routines on plain arrays of `SVector{D,T}` / `T`. No units,
-   no AtomsBase, no calculator object outside `MLSumCalculator` itself.
+   no AtomsBase, no calculator object outside `MSMCalculator` itself.
    This is what gets exercised by `msm_energy(...)` /
    `msm_energy_forces(...)` and what will be ported to
    `KernelAbstractions.jl`.
@@ -52,7 +52,7 @@ in grid points (independent of `l`!), because the kernel ``K_l`` has
 compact support ``2^l a`` and the grid spacing at level `l` is
 ``2^{l-1} h_1``. For a periodic axis with extent `n`, we need
 ``2 s_\text{max} + 1 \le n`` to avoid the stencil wrapping around and
-causing self-image aliasing. The constructor of `MLSumCalculator`
+causing self-image aliasing. The constructor of `MSMCalculator`
 does not yet check this — be aware when choosing small grids.
 
 ## Self-correction

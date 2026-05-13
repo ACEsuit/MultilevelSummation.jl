@@ -18,5 +18,5 @@ RationalDecay
 `Coulomb{T}` is provided as the alias `InversePower{1,T}`.
 
 ```@docs
-MLSum.grad
+MultilevelSummation.grad
 ```

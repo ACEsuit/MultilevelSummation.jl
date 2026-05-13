@@ -1,10 +1,10 @@
 # Calculator
 
-`MLSumCalculator` bundles all MSM hyperparameters. It also serves as the
+`MSMCalculator` bundles all MSM hyperparameters. It also serves as the
 `AtomsCalculators.AbstractCalculator` for AtomsBase systems.
 
 ```@docs
-MLSumCalculator
+MSMCalculator
 msm_energy
 msm_energy_forces
 kernel_self_value
@@ -13,7 +13,7 @@ kernel_self_value
 ## AtomsCalculators interface
 
 For a system `sys::AbstractSystem` (from `AtomsBase.jl`) and a calculator
-`calc::MLSumCalculator`:
+`calc::MSMCalculator`:
 
 ```julia
 AtomsCalculators.potential_energy(sys, calc)

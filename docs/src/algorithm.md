@@ -1,7 +1,7 @@
 # The MSM algorithm
 
 This page is a brief walk-through of the multilevel summation method as
-implemented in `MLSum.jl`. The reference is Hardy *et al.* (2015); the
+implemented in `MultilevelSummation.jl`. The reference is Hardy *et al.* (2015); the
 notation here follows the paper.
 
 ## Kernel splitting
@@ -29,11 +29,11 @@ K_L(r) &= \frac{1}{a_L}\,\gamma(|r|/a_L),
 where ``a_l = 2^{l-1} a``. Each ``K_l`` with ``l \ge 1`` has compact
 support ``|r| \le a_{l+1}``; ``K_L`` is the smooth tail.
 
-In `MLSum.jl`:
+In `MultilevelSummation.jl`:
 
 | Object              | API                                  |
 |---------------------|--------------------------------------|
-| Softening ``\gamma``| `MLSum.gamma_softening(R)` (internal) |
+| Softening ``\gamma``| `MultilevelSummation.gamma_softening(R)` (internal) |
 | ``K_0(r)``          | `short_range(splitting, r)`          |
 | ``K_l(r)``          | `long_range_level(splitting, l, r)`  |
 | ``K_L(r)``          | `top_level(splitting, r)`            |
@@ -56,7 +56,7 @@ multiple of ``2^{L-1} h``; for open axes the level-1 extent is set from
 the particle bounding box plus a basis-support pad and rounded up to a
 multiple of ``2^{L-1}``.
 
-`MLSum.build_grid_hierarchy(cell, periodic, positions, calc)` returns
+`MultilevelSummation.build_grid_hierarchy(cell, periodic, positions, calc)` returns
 this hierarchy as a `Vector{UniformGrid{D,T}}`.
 
 ## Algorithmic steps

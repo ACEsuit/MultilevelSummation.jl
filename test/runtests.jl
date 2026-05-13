@@ -1,6 +1,6 @@
 using Test
 
-@testset "MLSum.jl" begin
+@testset "MultilevelSummation.jl" begin
     include("test_kernels.jl")
     include("test_basis.jl")
     include("test_splittings.jl")

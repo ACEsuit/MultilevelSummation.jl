@@ -1,11 +1,11 @@
 using Documenter
-using MLSum
+using MultilevelSummation
 
-DocMeta.setdocmeta!(MLSum, :DocTestSetup, :(using MLSum); recursive=true)
+DocMeta.setdocmeta!(MultilevelSummation, :DocTestSetup, :(using MultilevelSummation); recursive=true)
 
 makedocs(;
-    modules  = [MLSum],
-    sitename = "MLSum.jl",
+    modules  = [MultilevelSummation],
+    sitename = "MultilevelSummation.jl",
     authors  = "Christoph Ortner and contributors",
     remotes  = nothing,
     format = Documenter.HTML(;

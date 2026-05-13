@@ -1,16 +1,16 @@
 using BenchmarkTools
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 
 # `SUITE` is the entry point PkgBenchmark.jl looks for. Run via:
 #
-#   julia --project=benchmark -e 'using PkgBenchmark; benchmarkpkg("MLSum")'
+#   julia --project=benchmark -e 'using PkgBenchmark; benchmarkpkg("MultilevelSummation")'
 #
 # or interactively:
 #
 #   using PkgBenchmark
-#   results = benchmarkpkg("MLSum")
+#   results = benchmarkpkg("MultilevelSummation")
 #   export_markdown("benchmark.md", results)
 #
 # Each group below targets a specific MSM operator or the end-to-end
@@ -46,7 +46,7 @@ end
 function _default_calc(::Type{T}) where {T<:AbstractFloat}
     splitting = HardyC2Cubic(T(a_DEFAULT), L_DEFAULT)
     basis     = CubicC1{T}()
-    return MLSumCalculator(splitting, basis, T(h_DEFAULT))
+    return MSMCalculator(splitting, basis, T(h_DEFAULT))
 end
 
 # ----------------------------------------------------------------------

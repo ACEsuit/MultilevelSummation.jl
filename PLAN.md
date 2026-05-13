@@ -1,4 +1,4 @@
-# MLSum.jl — Prototype Implementation Plan (rev. 5)
+# MultilevelSummation.jl — Prototype Implementation Plan (rev. 5)
 
 A Julia **package** prototype of the **Multilevel Summation Method (MSM)**
 following Hardy, Wu, Phillips, Stone, Skeel, Schulten
@@ -103,12 +103,12 @@ them.
 ## 2. Repository layout
 
 ```
-MLSum.jl/
-├── Project.toml                    # MLSum.jl package
+MultilevelSummation.jl/
+├── Project.toml                    # MultilevelSummation.jl package
 ├── PLAN.md                         # this file
 ├── src/
-│   ├── MLSum.jl                    # module, exports
-│   ├── calculator.jl               # MLSumCalculator + AtomsCalculators glue
+│   ├── MultilevelSummation.jl                    # module, exports
+│   ├── calculator.jl               # MSMCalculator + AtomsCalculators glue
 │   ├── api.jl                      # AtomsBase ↔ core: unit stripping, particle build
 │   ├── core.jl                     # low-level msm_energy / msm_energy_forces
 │   ├── kernels/
@@ -159,7 +159,7 @@ what tests exercise directly.
 # Q is either T (scalar charges) or SVector{M,T} (vector charges).
 
 msm_energy(
-    calc::MLSumCalculator{T},
+    calc::MSMCalculator{T},
     positions::AbstractVector{SVector{D,T}},
     charges::AbstractVector{Q},
     cell::SMatrix{D,D,T},
@@ -178,7 +178,7 @@ non-zero entries on the diagonal (they're not used).
 ### 3.2 AtomsCalculators wrapper
 
 ```julia
-struct MLSumCalculator{T,K,S,B}    # <: AtomsCalculators.AbstractCalculator
+struct MSMCalculator{T,K,S,B}    # <: AtomsCalculators.AbstractCalculator
     kernel::K
     splitting::S
     basis::B
@@ -189,12 +189,12 @@ struct MLSumCalculator{T,K,S,B}    # <: AtomsCalculators.AbstractCalculator
     charge_property::Symbol        # default :charge
 end
 
-AtomsCalculators.potential_energy(sys, calc::MLSumCalculator) =
+AtomsCalculators.potential_energy(sys, calc::MSMCalculator) =
     msm_energy(calc, _strip(sys, calc)...)
 
-AtomsCalculators.forces(sys, calc::MLSumCalculator)        = ...
-AtomsCalculators.energy_forces(sys, calc::MLSumCalculator) = ...
-AtomsCalculators.forces!(F, sys, calc::MLSumCalculator)    = ...
+AtomsCalculators.forces(sys, calc::MSMCalculator)        = ...
+AtomsCalculators.energy_forces(sys, calc::MSMCalculator) = ...
+AtomsCalculators.forces!(F, sys, calc::MSMCalculator)    = ...
 ```
 
 `_strip` reads `position`, `cell`, `periodicity`, and the configured
@@ -285,7 +285,7 @@ Provided initially:
 *Note: revisit basis order (Hermite, quintic, septic) once the rest of
 the stack is green.*
 
-### 4.4 `MLSumCalculator` construction
+### 4.4 `MSMCalculator` construction
 
 Constructor responsibilities:
 - Validate kernel/splitting compatibility.
@@ -436,7 +436,7 @@ the naive reference in Phase 2.
 
 ### Phase 8 — AtomsCalculators wrapper (≈ ½ day)
 
-**Build:** `MLSumCalculator`, AtomsCalculators methods, AtomsBase
+**Build:** `MSMCalculator`, AtomsCalculators methods, AtomsBase
 extraction, unit stripping.
 
 **Tests:**

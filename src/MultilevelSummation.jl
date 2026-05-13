@@ -1,4 +1,4 @@
-module MLSum
+module MultilevelSummation
 
 using StaticArrays
 
@@ -50,8 +50,8 @@ export anterpolate!, interpolate!, interpolate_grad!
 export restrict!, prolong!, coarser_grid
 export grid_cutoff!, build_stencil
 export top_level!, apply_neutralising_background!, top_grid_size
-export MLSumCalculator, msm_energy, msm_energy_forces
+export MSMCalculator, msm_energy, msm_energy_forces
 export build_grid_hierarchy, kernel_self_value
 export grad
 
-end # module MLSum
+end # module MultilevelSummation

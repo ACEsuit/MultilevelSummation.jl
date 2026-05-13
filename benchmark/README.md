@@ -1,4 +1,4 @@
-# MLSum benchmarks
+# MultilevelSummation benchmarks
 
 The benchmark suite uses [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl)
 and is invoked via [PkgBenchmark.jl](https://github.com/JuliaCI/PkgBenchmark.jl).
@@ -8,7 +8,7 @@ and is invoked via [PkgBenchmark.jl](https://github.com/JuliaCI/PkgBenchmark.jl)
 ```bash
 julia --project=benchmark -e '
     using PkgBenchmark
-    results = benchmarkpkg("MLSum")
+    results = benchmarkpkg("MultilevelSummation")
     export_markdown("benchmark/results.md", results)
 '
 ```
@@ -21,7 +21,7 @@ Takes ≈ 1 minute on a laptop. Writes a markdown report to
 ```bash
 julia --project=benchmark -e '
     using PkgBenchmark
-    judgement = judge("MLSum", "HEAD", "main")
+    judgement = judge("MultilevelSummation", "HEAD", "main")
     export_markdown("benchmark/judge.md", judgement)
 '
 ```

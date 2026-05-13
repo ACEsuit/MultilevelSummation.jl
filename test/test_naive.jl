@@ -1,11 +1,11 @@
 using Test
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 
 # Independent reference: same math, different loop structure.
 # This implementation iterates over ordered pairs (i, j) with i < j (no double
-# counting, no /2). Used to cross-check MLSum.naive_energy / naive_energy_forces.
+# counting, no /2). Used to cross-check MultilevelSummation.naive_energy / naive_energy_forces.
 function _indep_ref_energy_open(positions::Vector{SVector{D,T}},
                                 charges::Vector{T},
                                 kernel) where {D,T}
@@ -24,7 +24,7 @@ function _indep_ref_forces_open(positions::Vector{SVector{D,T}},
     F = zeros(SVector{D,T}, N)
     for i in 1:N, j in 1:N
         i == j && continue
-        F[i] -= charges[i] * charges[j] * MLSum.grad(kernel, positions[i] - positions[j])
+        F[i] -= charges[i] * charges[j] * MultilevelSummation.grad(kernel, positions[i] - positions[j])
     end
     return F
 end

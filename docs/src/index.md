@@ -1,4 +1,4 @@
-# MLSum.jl
+# MultilevelSummation.jl
 
 A Julia package implementing the **Multilevel Summation Method (MSM)** of
 Hardy, Wu, Phillips, Stone, Skeel & Schulten
@@ -23,7 +23,7 @@ design questions, is in [`PLAN.md`](https://github.com/) at the repo root.
 
 ```julia
 using Pkg
-Pkg.develop(path = "path/to/MLSum.jl")
+Pkg.develop(path = "path/to/MultilevelSummation.jl")
 ```
 
 ## Quick start
@@ -31,7 +31,7 @@ Pkg.develop(path = "path/to/MLSum.jl")
 A typical workflow at the **low-level (unit-free) API**:
 
 ```julia
-using MLSum
+using MultilevelSummation
 using StaticArrays
 
 # 5 random charges in a 4×4×4 box
@@ -44,7 +44,7 @@ cell     = SMatrix{3,3,Float64}(4 * one(SMatrix{3,3,Float64}))
 periodic = (true, true, true)
 
 # MSM hyperparameters
-calc = MLSumCalculator(
+calc = MSMCalculator(
     HardyC2Cubic(2.0, 4),             # cutoff a = 2, L = 4 levels
     CubicC1(),                        # cubic C¹ basis
     0.5,                              # finest grid spacing h = 0.5
@@ -99,5 +99,5 @@ pathway. See [Algorithm](algorithm.md) for a more detailed walk-through.
 | Grid             | `UniformGrid{D,T}`, per-axis BC                    |
 | Operators        | `anterpolate!`, `interpolate!`, `restrict!`, `prolong!`, `grid_cutoff!`, `top_level!` |
 | Naive references | `naive_energy_forces` (any kernel), `EwaldRef`     |
-| Assembly         | `MLSumCalculator`, `msm_energy`, `msm_energy_forces` |
+| Assembly         | `MSMCalculator`, `msm_energy`, `msm_energy_forces` |
 | AtomsCalculators | `potential_energy`, `forces`, `energy_forces`, `forces!` |

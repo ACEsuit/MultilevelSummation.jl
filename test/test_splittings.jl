@@ -1,5 +1,5 @@
 using Test
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using StableRNGs
 
@@ -8,15 +8,15 @@ using StableRNGs
 
     @testset "softening γ — value and slope match at R=1" begin
         ε = 1e-7
-        γ_minus  = MLSum.gamma_softening(1.0 - ε)
-        γ_plus   = MLSum.gamma_softening(1.0 + ε)
+        γ_minus  = MultilevelSummation.gamma_softening(1.0 - ε)
+        γ_plus   = MultilevelSummation.gamma_softening(1.0 + ε)
         # At R = 1: γ = 1 from both pieces (polynomial → 1; 1/R → 1)
         @test isapprox(γ_minus, 1.0; atol=1e-6)
         @test isapprox(γ_plus,  1.0; atol=1e-6)
         @test isapprox(γ_minus, γ_plus; atol=1e-6)
         # γ'(1⁻) = 1·(3/2 - 5/2) = -1; γ'(1⁺) = -1
-        gp_minus = MLSum.gamma_softening_prime(1.0 - ε)
-        gp_plus  = MLSum.gamma_softening_prime(1.0 + ε)
+        gp_minus = MultilevelSummation.gamma_softening_prime(1.0 - ε)
+        gp_plus  = MultilevelSummation.gamma_softening_prime(1.0 + ε)
         @test isapprox(gp_minus, -1.0; atol=1e-6)
         @test isapprox(gp_plus,  -1.0; atol=1e-6)
         @test isapprox(gp_minus, gp_plus; atol=1e-6)
@@ -24,8 +24,8 @@ using StableRNGs
 
     @testset "γ matches 1/R for R > 1" begin
         for R in (1.1, 2.0, 5.0, 17.3)
-            @test MLSum.gamma_softening(R) ≈ 1 / R
-            @test MLSum.gamma_softening_prime(R) ≈ -1 / R^2
+            @test MultilevelSummation.gamma_softening(R) ≈ 1 / R
+            @test MultilevelSummation.gamma_softening_prime(R) ≈ -1 / R^2
         end
     end
 

@@ -1,5 +1,5 @@
 using Test
-using MLSum
+using MultilevelSummation
 using AtomsBase
 using AtomsCalculators
 using StaticArrays
@@ -33,7 +33,7 @@ end
     h = 0.5
     a = 2.0
     nlev = 4                   # L_levels=4 ⇒ top is 1×1×1 for an 8-point fine grid
-    calc = MLSumCalculator(HardyC2Cubic(a, nlev), basis, h)
+    calc = MSMCalculator(HardyC2Cubic(a, nlev), basis, h)
 
     @testset "potential_energy matches low-level core" begin
         # Reproduce the same call on the unit-free core directly.
@@ -95,7 +95,7 @@ end
         # Build a system with charges under :q instead of :charge.
         atoms = [Atom(:Ar, position(sys, i); q = sys[i, :charge]) for i in 1:N]
         sys_q = periodic_system(atoms, cell_vectors(sys))
-        calc_q = MLSumCalculator(HardyC2Cubic(a, nlev), basis, h;
+        calc_q = MSMCalculator(HardyC2Cubic(a, nlev), basis, h;
                                   charge_property = :q)
         U_q = AtomsCalculators.potential_energy(sys_q, calc_q)
         U_ref = AtomsCalculators.potential_energy(sys, calc)

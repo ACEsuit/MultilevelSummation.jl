@@ -1,5 +1,5 @@
 """
-    MLSumCalculator{T,S,B}(splitting, basis, h; charge_property=:charge)
+    MSMCalculator{T,S,B}(splitting, basis, h; charge_property=:charge)
 
 Container for MSM hyperparameters at the low-level (numerical) layer; also
 serves as the `AtomsCalculators.AbstractCalculator` for AtomsBase systems.
@@ -11,21 +11,21 @@ Fields:
 - `charge_property::Symbol`: which AtomsBase atom property to read for charges
   when used through the AtomsCalculators interface (default `:charge`).
 """
-struct MLSumCalculator{T<:AbstractFloat, S, B}
+struct MSMCalculator{T<:AbstractFloat, S, B}
     splitting::S
     basis::B
     h::T
     charge_property::Symbol
 end
 
-MLSumCalculator(splitting::S, basis::B, h::T;
+MSMCalculator(splitting::S, basis::B, h::T;
                 charge_property::Symbol = :charge) where {T<:AbstractFloat,S,B} =
-    MLSumCalculator{T,S,B}(splitting, basis, h, charge_property)
+    MSMCalculator{T,S,B}(splitting, basis, h, charge_property)
 
 # Convenience accessors
-short_range_cutoff(c::MLSumCalculator)    = c.splitting.a
-nlevels(c::MLSumCalculator)               = c.splitting.L
-fine_spacing(c::MLSumCalculator)          = c.h
+short_range_cutoff(c::MSMCalculator)    = c.splitting.a
+nlevels(c::MSMCalculator)               = c.splitting.L
+fine_spacing(c::MSMCalculator)          = c.h
 
 """
     kernel_self_value(splitting, ::Val{D}) -> T
@@ -61,7 +61,7 @@ Mixed BC: any combination is allowed; each axis is treated independently.
 function build_grid_hierarchy(cell::SMatrix{D,D,T},
                               periodic::NTuple{D,Bool},
                               positions::AbstractVector{SVector{D,T}},
-                              c::MLSumCalculator{T}) where {D, T<:AbstractFloat}
+                              c::MSMCalculator{T}) where {D, T<:AbstractFloat}
     h    = c.h
     L    = nlevels(c)
     twoL = 2^(L - 1)
@@ -117,7 +117,7 @@ function msm_energy(positions::AbstractVector{SVector{D,T}},
                     charges::AbstractVector{T},
                     cell::SMatrix{D,D,T},
                     periodic::NTuple{D,Bool},
-                    calc::MLSumCalculator{T}) where {D, T<:AbstractFloat}
+                    calc::MSMCalculator{T}) where {D, T<:AbstractFloat}
     U, _ = _msm_compute(positions, charges, cell, periodic, calc; want_forces=false)
     return U
 end
@@ -131,7 +131,7 @@ function msm_energy_forces(positions::AbstractVector{SVector{D,T}},
                            charges::AbstractVector{T},
                            cell::SMatrix{D,D,T},
                            periodic::NTuple{D,Bool},
-                           calc::MLSumCalculator{T}) where {D, T<:AbstractFloat}
+                           calc::MSMCalculator{T}) where {D, T<:AbstractFloat}
     return _msm_compute(positions, charges, cell, periodic, calc; want_forces=true)
 end
 
@@ -139,7 +139,7 @@ function _msm_compute(positions::AbstractVector{SVector{D,T}},
                       charges::AbstractVector{T},
                       cell::SMatrix{D,D,T},
                       periodic::NTuple{D,Bool},
-                      calc::MLSumCalculator{T};
+                      calc::MSMCalculator{T};
                       want_forces::Bool) where {D, T<:AbstractFloat}
     @assert length(positions) == length(charges)
     N = length(positions)
@@ -217,7 +217,7 @@ function _short_range_and_long_forces(positions::AbstractVector{SVector{D,T}},
                                       basis,
                                       grids,
                                       es,
-                                      calc::MLSumCalculator{T};
+                                      calc::MSMCalculator{T};
                                       want_forces::Bool,
                                       a::T) where {D, T<:AbstractFloat}
     N = length(positions)

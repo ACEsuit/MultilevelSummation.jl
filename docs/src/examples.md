@@ -5,7 +5,7 @@ Concrete, runnable examples that exercise the major code paths.
 ## Open-BC Coulomb, 5 charges in 3D
 
 ```@example open3d
-using MLSum
+using MultilevelSummation
 using StaticArrays
 using Random
 Random.seed!(42)
@@ -21,7 +21,7 @@ K = Coulomb()
 U_naive = naive_energy(positions, charges, cell, periodic, K)
 
 # MSM with a fairly small a — splitting error is the dominant approximation here.
-calc = MLSumCalculator(HardyC2Cubic(2.0, 3), CubicC1(), 0.2)
+calc = MSMCalculator(HardyC2Cubic(2.0, 3), CubicC1(), 0.2)
 U_msm = msm_energy(positions, charges, cell, periodic, calc)
 
 (U_naive, U_msm, abs(U_msm - U_naive) / abs(U_naive))
@@ -33,7 +33,7 @@ Holding `h` fixed and growing `a` should reduce the splitting error
 monotonically.
 
 ```@example convergence
-using MLSum, StaticArrays, Random
+using MultilevelSummation, StaticArrays, Random
 Random.seed!(0xC0FFEE)
 
 positions = [SVector{3,Float64}((rand(3) .* 2)...) for _ in 1:8]
@@ -43,7 +43,7 @@ cell, periodic = zero(SMatrix{3,3,Float64}), (false, false, false)
 U_naive = naive_energy(positions, charges, cell, periodic, Coulomb())
 
 for a in (0.8, 1.6, 3.2, 6.4)
-    calc = MLSumCalculator(HardyC2Cubic(a, 3), CubicC1(), 0.2)
+    calc = MSMCalculator(HardyC2Cubic(a, 3), CubicC1(), 0.2)
     U = msm_energy(positions, charges, cell, periodic, calc)
     @show a, abs(U - U_naive) / abs(U_naive)
 end
@@ -52,7 +52,7 @@ end
 ## Periodic 3D Coulomb
 
 ```@example periodic
-using MLSum, StaticArrays, Random
+using MultilevelSummation, StaticArrays, Random
 Random.seed!(7)
 
 h, L = 0.5, 4                        # 8 fine points per axis ⇒ top is 1×1×1
@@ -64,7 +64,7 @@ N = 8
 positions = [SVector{3,Float64}((rand(3) .* cell_L)...) for _ in 1:N]
 charges   = randn(N); charges .-= sum(charges)/N
 
-calc = MLSumCalculator(HardyC2Cubic(2.0, L), CubicC1(), h)
+calc = MSMCalculator(HardyC2Cubic(2.0, L), CubicC1(), h)
 U, F = msm_energy_forces(positions, charges, cell, periodic, calc)
 (U, sum(F))                          # ΣF ≈ 0 expected
 ```
@@ -72,7 +72,7 @@ U, F = msm_energy_forces(positions, charges, cell, periodic, calc)
 ## Through the AtomsCalculators interface
 
 ```@example atoms
-using MLSum, AtomsBase, AtomsCalculators, Unitful, StaticArrays
+using MultilevelSummation, AtomsBase, AtomsCalculators, Unitful, StaticArrays
 
 L = 4.0u"Å"
 cell_vec = (SVector(L, 0u"Å", 0u"Å"),
@@ -83,7 +83,7 @@ sys = periodic_system([
     Atom(:Cl, SVector(2.5u"Å", 1.5u"Å", 3.0u"Å"); charge = -1.0),
 ], cell_vec)
 
-calc = MLSumCalculator(HardyC2Cubic(2.0, 4), CubicC1(), 0.5)
+calc = MSMCalculator(HardyC2Cubic(2.0, 4), CubicC1(), 0.5)
 ef = AtomsCalculators.energy_forces(sys, calc)
 (ef.energy, ef.forces[1])
 ```
@@ -91,7 +91,7 @@ ef = AtomsCalculators.energy_forces(sys, calc)
 ## Mixed BC: periodic in xy, open in z
 
 ```@example mixed
-using MLSum, StaticArrays, Random
+using MultilevelSummation, StaticArrays, Random
 Random.seed!(11)
 
 # 4×4 periodic in xy, open in z
@@ -102,7 +102,7 @@ periodic = (true, true, false)
 positions = [SVector(2.0, 1.5, 0.3), SVector(0.5, 3.2, -0.4)]
 charges   = [1.0, -1.0]
 
-calc = MLSumCalculator(HardyC2Cubic(2.0, 3), CubicC1(), 0.5)
+calc = MSMCalculator(HardyC2Cubic(2.0, 3), CubicC1(), 0.5)
 msm_energy(positions, charges, cell, periodic, calc)
 ```
 
@@ -112,7 +112,7 @@ The Ewald reference lives under `test/refs/`, not in the package, but
 the source is self-contained:
 
 ```julia
-include(joinpath(pkgdir(MLSum), "test", "refs", "ewald.jl"))
+include(joinpath(pkgdir(MultilevelSummation), "test", "refs", "ewald.jl"))
 using .EwaldRef: ewald_energy, ewald_energy_forces
 
 U = ewald_energy(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
