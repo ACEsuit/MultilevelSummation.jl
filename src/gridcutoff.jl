@@ -90,10 +90,17 @@ end
         s_α     = :(smax[$α])
         Sz_α    = Sz[α]       # splice as integer literal
         if Per[α]::Bool
+            # Power-of-2 axes: skip mod entirely. Valid because the inner
+            # offset `m - 1 + off` is ≥ -smax_α and Sz_α ≥ smax_α (the grid
+            # is at least as wide as the stencil radius), so adding Sz_α
+            # makes it non-negative without a branch.
+            wrap_expr = ispow2(Sz_α) ?
+                :((((($m_sym - 1 + $off_sym) + $Sz_α) & $(Sz_α - 1)) + 1)) :
+                :(mod($m_sym - 1 + $off_sym, $Sz_α) + 1)
             body = quote
                 for $off_sym in -$s_α:$s_α
                     $I_sym = $off_sym + $s_α + 1
-                    $n_sym = mod($m_sym - 1 + $off_sym, $Sz_α) + 1
+                    $n_sym = $wrap_expr
                     $body
                 end
             end

@@ -86,9 +86,12 @@ if the index falls outside an open axis. Periodic axes always wrap.
 
 Implemented as a `@generated` function dispatching on `(Per, Sz)`: each
 periodicity-and-size combination compiles to fully unrolled, branch-free
-per-axis code with the grid extents inlined as integer literals (so
-`mod(idx, n)` becomes `mod(idx, <const>)` and the compiler can replace
-the integer division with a multiply-high sequence).
+per-axis code with the grid extents inlined as integer literals.
+**Power-of-two periodic axes** skip the `mod` entirely and use a bitmask
+(`((idx + n) & (n - 1)) + 1`), valid because the convolution callers
+bound `idx ≥ -smax` and `n ≥ smax`, so `idx + n ≥ 0`. For general
+periodic sizes we fall back to `mod(idx, n) + 1`, which the compiler
+lowers to a multiply-high sequence (`n` is still a compile-time literal).
 """
 @generated function wrap_index(idx::NTuple{D,Int},
                                 ::UniformGrid{D,T,Per,Sz}) where {D,T,Per,Sz}
@@ -98,7 +101,11 @@ the integer division with a multiply-high sequence).
     for α in 1:D
         n = Sz[α]
         if Per[α]::Bool
-            push!(elem_exprs, :(mod(idx[$α], $n) + 1))
+            if ispow2(n)
+                push!(elem_exprs, :(((idx[$α] + $n) & $(n - 1)) + 1))
+            else
+                push!(elem_exprs, :(mod(idx[$α], $n) + 1))
+            end
         else
             push!(elem_exprs, :(
                 let i = idx[$α]
