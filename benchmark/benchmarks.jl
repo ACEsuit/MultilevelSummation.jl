@@ -138,6 +138,45 @@ for N in (16, 32, 64)
 end
 
 # ----------------------------------------------------------------------
+# Periodic wrap mode: pow2 (bitmask) vs non-pow2 (mod-with-const)
+# ----------------------------------------------------------------------
+# `UniformGrid{D,T,Per,Sz}` has Sz as a type parameter, so for periodic
+# axes whose extent is a power of two the generator emits
+# `((idx + n) & (n - 1))`; otherwise it falls back to
+# `mod(idx, n)` with `n` an integer literal (multiply-high lowering).
+# Both sizes here satisfy `n_fine % 2^(L-1) == 0` (L=3 → mult of 4).
+# Smaller `a` keeps the stencil small (smax=ceil(2a/h)) so the suite
+# stays CI-friendly.
+SUITE["wrap_mode"] = BenchmarkGroup()
+
+let
+    D = 3
+    h = h_DEFAULT
+    a = 1.0
+    L = 3
+    splitting = HardyC2Cubic(a, L)
+    basis     = CubicC1()
+    calc      = MSMCalculator(splitting, basis, h)
+
+    for (label, n_fine) in (("pow2_n=16", 16), ("nonpow2_n=12", 12))
+        positions, charges, cell, periodic =
+            _make_periodic_system(Val(D), N_DEFAULT, h, n_fine)
+        SUITE["wrap_mode"]["msm_energy_$label"] =
+            @benchmarkable msm_energy($positions, $charges, $cell, $periodic, $calc)
+
+        # Standalone grid_cutoff! at level 1 — the place where the
+        # `mod` / bitmask cost concentrates.
+        grid = UniformGrid(ntuple(_ -> h, D), ntuple(_ -> n_fine, D),
+                           ntuple(_ -> 0.0, D), ntuple(_ -> true, D))
+        rng = StableRNG(RNG_SEED)
+        q_fine = randn(rng, grid.size...)
+        e_fine = zeros(grid.size...)
+        SUITE["wrap_mode"]["grid_cutoff!_$label"] =
+            @benchmarkable grid_cutoff!($e_fine, $q_fine, $grid, $splitting, 1)
+    end
+end
+
+# ----------------------------------------------------------------------
 # Precision: Float64 vs Float32 cost
 # ----------------------------------------------------------------------
 SUITE["precision"] = BenchmarkGroup()
