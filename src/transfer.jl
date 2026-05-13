@@ -96,16 +96,17 @@ periodicity, each axis spacing scaled by `factor`, each axis extent
 divided by `factor`. For periodic axes the original extent must be
 divisible by `factor`. Open axes round down.
 """
-function coarser_grid(g::UniformGrid{D,T}, factor::Int = 2) where {D,T}
+function coarser_grid(g::UniformGrid{D,T,Per,Sz},
+                      factor::Int = 2) where {D,T,Per,Sz}
     new_spacing = g.spacing .* T(factor)
     new_size = ntuple(Val(D)) do α
-        if g.periodic[α]
-            rem(g.size[α], factor) == 0 ||
-                throw(ArgumentError("axis $α extent $(g.size[α]) not divisible by $factor"))
-            div(g.size[α], factor)
+        if Per[α]
+            rem(Sz[α], factor) == 0 ||
+                throw(ArgumentError("axis $α extent $(Sz[α]) not divisible by $factor"))
+            div(Sz[α], factor)
         else
-            div(g.size[α], factor)
+            div(Sz[α], factor)
         end
     end
-    return UniformGrid{D,T}(new_spacing, new_size, g.origin, g.periodic)
+    return UniformGrid{D,T,Per,new_size}(new_spacing, g.origin)
 end
