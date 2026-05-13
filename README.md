@@ -10,14 +10,15 @@ dimension `d ∈ {1, 2, 3}`, per-axis `:open` / `:periodic` boundary
 conditions, pluggable kernel splittings and interpolation bases, and an
 [AtomsBase](https://github.com/JuliaMolSim/AtomsBase.jl) +
 [AtomsCalculators](https://github.com/JuliaMolSim/AtomsCalculators.jl)
-interface. 
+interface. Ships with a naive 3D Ewald reference
+(`MultilevelSummation.Reference`) and a programmatic hyperparameter
+sweep API (`MultilevelSummation.Tune`) for accuracy-vs-cost analysis.
 
 **Highly experimental** 
 — the API is not stable
 - only the Coulomb (`1/r`) splitting is currently implemented
-- performance is not yet tuned (many allocations)
-- no ChainRules integration
 - missing GPU port via `KernelAbstractions.jl`
+- provides forces, but no ChainRules integration yet
 
 See the [documentation](https://ACEsuit.github.io/MultilevelSummation.jl/dev/) 
 for details, examples, and the implementation plan.

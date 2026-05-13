@@ -91,13 +91,15 @@ pathway. See [Algorithm](algorithm.md) for a more detailed walk-through.
 
 ## What's in the package
 
-| Module           | What it contains                                   |
-|------------------|----------------------------------------------------|
-| Kernels          | `InversePower{N}`, `Coulomb` alias, `RationalDecay{N}` |
-| Splittings       | `HardyC2Cubic` (Coulomb only at the moment)        |
-| Basis            | `CubicC1` (paper's piecewise cubic, C¹)            |
-| Grid             | `UniformGrid{D,T}`, per-axis BC                    |
-| Operators        | `anterpolate!`, `interpolate!`, `restrict!`, `prolong!`, `grid_cutoff!`, `top_level!` |
-| Naive references | `naive_energy_forces` (any kernel), `EwaldRef`     |
-| Assembly         | `MSMCalculator`, `msm_energy`, `msm_energy_forces` |
-| AtomsCalculators | `potential_energy`, `forces`, `energy_forces`, `forces!` |
+| Module                              | What it contains                                   |
+|-------------------------------------|----------------------------------------------------|
+| Kernels                             | `InversePower{N}`, `Coulomb` alias, `RationalDecay{N}` |
+| Splittings                          | `HardyC2Cubic` (Coulomb only at the moment)        |
+| Basis                               | `CubicC1` (paper's piecewise cubic, C¹)            |
+| Grid                                | `UniformGrid{D,T,Per,Sz}`, per-axis BC at the type level |
+| Operators                           | `anterpolate!`, `interpolate!`, `restrict!`, `prolong!`, `grid_cutoff!`, `top_level!` |
+| Naive O(N²) reference               | `naive_energy_forces` (any kernel)                 |
+| `MultilevelSummation.Reference`     | `ewald_energy`, `ewald_energy_forces` — naive 3D Ewald |
+| Assembly                            | `MSMCalculator`, `msm_energy`, `msm_energy_forces` |
+| AtomsCalculators interface          | `potential_energy`, `forces`, `energy_forces`, `forces!` |
+| `MultilevelSummation.Tune`          | `sweep`, `pareto_front`, `recommend`, `ewald_reference` |

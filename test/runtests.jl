@@ -12,4 +12,5 @@ using Test
     include("test_toplevel.jl")
     include("test_core.jl")
     include("test_calculator.jl")
+    include("test_tune.jl")
 end

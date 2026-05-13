@@ -1,10 +1,8 @@
 using Test
 using MultilevelSummation
+using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
 using StaticArrays
 using StableRNGs
-
-include("refs/ewald.jl")
-using .EwaldRef: ewald_energy, ewald_energy_forces
 
 # NOTE on FD-vs-analytic comparisons:
 #   For open BC, MSM rebuilds the grid hierarchy each call with origin tied

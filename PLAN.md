@@ -16,21 +16,24 @@ package once correctness is established.
 ## Status (current)
 
 **The CPU prototype is functionally complete.** All eight phases below are
-implemented, with **3642 unit tests passing** on both `main` and `perf`.
+implemented, with **3686 unit tests passing** on `perf`.
 
 What's been built:
 - **Math primitives** (`InversePower{N}`, `Coulomb` alias, `RationalDecay{N}`,
   `CubicC1` basis, `HardyC2Cubic` splitting for Coulomb).
 - **Naive O(N²) reference** for arbitrary translation-invariant kernels and
   arbitrary per-axis BC.
-- **Naive 3D Ewald reference** in `test/refs/` for periodic Coulomb tests,
-  self-validated via α-invariance and FD gradient.
+- **`MultilevelSummation.Reference` submodule** — naive 3D Ewald reference
+  for periodic Coulomb, self-validated via α-invariance and FD gradient.
+  Available as part of the package; no `include()` of test files needed.
 - **Grid hierarchy + transfer / convolution operators** (`anterpolate!`,
   `interpolate!`, `interpolate_grad!`, `restrict!`, `prolong!`,
   `grid_cutoff!`, `top_level!`, `apply_neutralising_background!`).
 - **End-to-end MSM** (`msm_energy`, `msm_energy_forces`) with the
   `MSMCalculator{T,S,B}` config; `AtomsCalculators` wrapper for AtomsBase
   systems with unit-stripping.
+- **`MultilevelSummation.Tune` submodule** — programmatic hyperparameter
+  sweep API (`sweep`, `pareto_front`, `recommend`, `ewald_reference`).
 
 What's been verified:
 - Convergence in `a` and `h` matches the paper's `O(h^p / a^{p+1})` scaling.
@@ -39,12 +42,14 @@ What's been verified:
 - Periodic Coulomb MSM tracks the Ewald reference to small `a`-dependent
   thresholds.
 
-Repository layout: `src/` for shipped code, `test/` with `refs/ewald.jl` for
-test-only references, `docs/` with a built Documenter site, `benchmark/`
-with a PkgBenchmark suite (a `wrap_mode` group covers pow2-vs-non-pow2
-periodic comparison), `profile/` with three interactive profiling scripts
-(`1.jl` open-BC, `2.jl` periodic, `3_restrict.jl` regression diagnostic).
-CI on `.github/workflows/CI.yml` and docs on `Documenter.yml`.
+Repository layout: `src/` for shipped code (with `reference/` and `tune/`
+subfolders for the public submodules), `test/` for tests, `docs/` with a
+built Documenter site, `benchmark/` with a PkgBenchmark suite (a
+`wrap_mode` group covers pow2-vs-non-pow2 periodic comparison), `profile/`
+with three interactive profiling scripts (`1.jl` open-BC, `2.jl` periodic,
+`3_restrict.jl` regression diagnostic), `tuning/` with realistic-system
+hyperparameter sweep scripts (`tune_NaCl.jl` shipped, `tune_H2O.jl`
+planned). CI on `.github/workflows/CI.yml` and docs on `Documenter.yml`.
 
 **Performance status.** Five rounds of work on the `perf` branch produced
 roughly **3× speedup** on `msm_energy` in 3D vs the original prototype
@@ -380,8 +385,10 @@ that don't need a configuration.
 
 ### Phase 2b — Ewald reference for 3D periodic Coulomb (≈ ½ day)
 
-Test-only infrastructure. Lives in `test/refs/ewald.jl`, not shipped
-with the package.
+Originally test-only infrastructure under `test/refs/`. **Now lifted
+to `src/reference/Reference.jl` as the `MultilevelSummation.Reference`
+submodule**, since both the test suite and `MultilevelSummation.Tune`
+need it. Same code, public namespace.
 
 **Build:**
 - `ewald_energy_forces(positions, charges, cell; α, R_cut, k_cut)`:
@@ -561,7 +568,7 @@ Status updated post-prototype.
 |-------|--------------------------------------------|--------|
 | 1     | Kernels, basis, splitting primitives       | 1 day  |
 | 2     | Naive reference (multi-kernel, mixed BC)   | ½ day  |
-| 2b    | Ewald reference in `test/refs/`            | ½ day  |
+| 2b    | Ewald reference (`src/reference/`)         | ½ day  |
 | 3     | Grid + anterp/interp (vector charges)      | 1 day  |
 | 4     | Restriction / prolongation                 | ½ day  |
 | 5     | Grid-cutoff convolution (matrix stencil)   | 1 day  |

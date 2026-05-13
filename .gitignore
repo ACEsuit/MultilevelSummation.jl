@@ -5,6 +5,8 @@
 Manifest.toml
 docs/Manifest.toml
 benchmark/Manifest.toml
+tuning/Manifest.toml
+tuning/tune_*_results.csv
 LocalPreferences.toml
 
 # Per-developer environment overrides
