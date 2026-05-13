@@ -1,8 +1,108 @@
-docs/build/
+# ---------------------------------------------------------------------
+# Julia package manager
+# ---------------------------------------------------------------------
+# Manifests pin exact dependency versions; not part of library packages.
+Manifest.toml
 docs/Manifest.toml
 benchmark/Manifest.toml
+LocalPreferences.toml
+
+# Per-developer environment overrides
+JuliaProject.toml
+
+# ---------------------------------------------------------------------
+# Code coverage and allocation tracking
+# ---------------------------------------------------------------------
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+coverage/
+lcov.info
+
+# ---------------------------------------------------------------------
+# Build artefacts: BinaryProvider / BinDeps
+# ---------------------------------------------------------------------
+deps/deps.jl
+deps/build.log
+deps/downloads/
+deps/usr/
+deps/src/
+
+# ---------------------------------------------------------------------
+# Documenter.jl
+# ---------------------------------------------------------------------
+docs/build/
+docs/site/
+
+# ---------------------------------------------------------------------
+# PkgBenchmark / BenchmarkTools artefacts
+# ---------------------------------------------------------------------
 benchmark/tune.json
 benchmark/results.json
-Manifest.toml
-*.cov
+benchmark/results.md
+benchmark/judge.md
+benchmark/*.bench
+
+# ---------------------------------------------------------------------
+# Scratch / temporary work
+# ---------------------------------------------------------------------
+scratch/
+.scratch/
+tmp/
+.tmp/
+*.tmp
+*.bak
+*.orig
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# Profile output
+*.prof
+profile.html
+profile.json
+*.heap
+
+# ---------------------------------------------------------------------
+# Editor / IDE
+# ---------------------------------------------------------------------
+.vscode/
+.idea/
+.cursor/
+.zed/
+*.sublime-project
+*.sublime-workspace
+.fleet/
+
+# Claude Code session files
+.claude/
+
+# Jupyter / IJulia
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ---------------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------------
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------------------------------------------------------------------
+# Build / package outputs
+# ---------------------------------------------------------------------
+*.tar.gz
+*.zip
+*.7z
+
+# ---------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------
+*.log
+logs/
