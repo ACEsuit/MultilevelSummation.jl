@@ -49,7 +49,7 @@ end
 # --- Grid hierarchy ----------------------------------------------------------
 
 """
-    build_grid_hierarchy(cell, periodic, positions, c) -> Vector{UniformGrid{D,T}}
+    build_grid_hierarchy(cell, periodic, positions, c) -> Vector{UniformGrid{D,T,Per}}
 
 Build the finest-to-coarsest MSM grid hierarchy. For periodic axes, the
 level-1 extent is `L_α / h` (must be an integer multiple of `2^{L-1}`).
@@ -91,9 +91,13 @@ function build_grid_hierarchy(cell::SMatrix{D,D,T},
     end)
 
     spacing = SVector{D,T}(ntuple(_ -> h, Val(D)))
-    g_fine = UniformGrid{D,T}(spacing, n1, origin, periodic)
+    g_fine  = UniformGrid(spacing, n1, origin, periodic)   # lifts periodic and size into the type
 
-    grids = Vector{UniformGrid{D,T}}(undef, L)
+    # Each level has a different `Sz` type parameter, so the hierarchy is a
+    # heterogeneous container. The per-level operator calls still type-specialise
+    # on the concrete grid type at each call site (one dynamic dispatch per
+    # level boundary, negligible vs. the inner-loop savings).
+    grids = Vector{Any}(undef, L)
     grids[1] = g_fine
     for l in 2:L
         grids[l] = coarser_grid(grids[l-1], 2)
