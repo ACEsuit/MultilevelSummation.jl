@@ -1,17 +1,20 @@
 """
     restrict!(dst, src, dst_grid, src_grid, basis) -> dst
 
-Grid-to-grid restriction (paper eq. 8). Each source grid point is
-treated as a "particle" at its location with weight `src[n_src]`, and
-its weight is scattered to destination grid points within the basis
-support window, weighted by `Φ((r_src − x_dst)/h_dst)`.
+Grid-to-grid restriction (paper eq. 8). For each destination grid
+point, gather contributions from the surrounding source grid points,
+weighted by `Φ((r_src − r_dst)/h_dst)`.
 
 The canonical MSM restriction is the special case where `dst_grid` has
-exactly twice the spacing of `src_grid` (a "coarsen by 2" step); but the
+exactly twice the spacing of `src_grid` (a "coarsen by 2" step); the
 implementation is generic in the two grids' spacings and origins.
 
-`dst` is cleared before scattering. Periodic axes wrap; open axes drop
+This is the gather form of the operator — each output cell `dst[n_dst]`
+is computed independently from `src`. Threaded over destination points
+via OhMyThreads. Periodic axes wrap via `wrap_index`; open axes drop
 out-of-range contributions.
+
+`dst` is overwritten.
 """
 function restrict!(dst::AbstractArray{T,D},
                    src::AbstractArray{T,D},
@@ -20,26 +23,34 @@ function restrict!(dst::AbstractArray{T,D},
                    basis) where {D,T<:AbstractFloat}
     @assert size(dst) == dst_grid.size
     @assert size(src) == src_grid.size
-    fill!(dst, zero(T))
     s = support_radius(basis)
-    off_range = ntuple(_ -> -(s - 1):s, Val(D))
+    # In src-grid units the basis support around r_dst spans
+    # `s · h_dst / h_src` per axis (for the canonical h_dst = 2·h_src
+    # coarsen-by-2 this is 2s).
+    half_w = ntuple(α -> ceil(Int, s * dst_grid.spacing[α] / src_grid.spacing[α]), Val(D))
 
-    @inbounds for n_src in CartesianIndices(src)
-        q = src[n_src]
-        iszero(q) && continue
-        r_src = src_grid.origin .+ SVector{D,T}(ntuple(α -> T(n_src[α] - 1) * src_grid.spacing[α], Val(D)))
-        ξ = (r_src - dst_grid.origin) ./ dst_grid.spacing
-        m0 = SVector{D,Int}(ntuple(α -> floor(Int, ξ[α]), Val(D)))
-        for off in Iterators.product(off_range...)
-            idx = ntuple(α -> m0[α] + off[α], Val(D))
-            idx_wrapped, in_bounds = wrap_index(idx, dst_grid)
+    tforeach(CartesianIndices(dst)) do n_dst
+        r_dst = dst_grid.origin .+ SVector{D,T}(ntuple(α -> T(n_dst[α] - 1) * dst_grid.spacing[α], Val(D)))
+        # Window centre in src-grid coords (0-indexed; `wrap_index` expects
+        # 0-based input). The gather range covers `m0 + off` for `off ∈
+        # -half_w[α]:half_w[α]`.
+        m0 = SVector{D,Int}(ntuple(α -> round(Int, (r_dst[α] - src_grid.origin[α]) / src_grid.spacing[α]), Val(D)))
+        acc = zero(T)
+        @inbounds for off in Iterators.product(ntuple(α -> -half_w[α]:half_w[α], Val(D))...)
+            n_src = ntuple(α -> m0[α] + off[α], Val(D))
+            n_src_wrapped, in_bounds = wrap_index(n_src, src_grid)
             in_bounds || continue
             bv = one(T)
             for α in 1:D
-                bv *= eval_phi(basis, ξ[α] - T(idx[α]))
+                # n_src is the 0-indexed src position (matching wrap_index's
+                # convention); the corresponding particle-coord position is
+                # `origin + n_src · spacing`.
+                r_src_α = src_grid.origin[α] + T(n_src[α]) * src_grid.spacing[α]
+                bv *= eval_phi(basis, (r_src_α - r_dst[α]) / dst_grid.spacing[α])
             end
-            dst[idx_wrapped...] += bv * q
+            acc += bv * src[n_src_wrapped...]
         end
+        @inbounds dst[n_dst] = acc
     end
     return dst
 end
@@ -64,16 +75,15 @@ function prolong!(dst::AbstractArray{T,D},
                   basis) where {D,T<:AbstractFloat}
     @assert size(dst) == dst_grid.size
     @assert size(src) == src_grid.size
-    fill!(dst, zero(T))
     s = support_radius(basis)
     off_range = ntuple(_ -> -(s - 1):s, Val(D))
 
-    @inbounds for n_dst in CartesianIndices(dst)
+    tforeach(CartesianIndices(dst)) do n_dst
         r_dst = dst_grid.origin .+ SVector{D,T}(ntuple(α -> T(n_dst[α] - 1) * dst_grid.spacing[α], Val(D)))
         ξ = (r_dst - src_grid.origin) ./ src_grid.spacing
         m0 = SVector{D,Int}(ntuple(α -> floor(Int, ξ[α]), Val(D)))
         acc = zero(T)
-        for off in Iterators.product(off_range...)
+        @inbounds for off in Iterators.product(off_range...)
             idx = ntuple(α -> m0[α] + off[α], Val(D))
             idx_wrapped, in_bounds = wrap_index(idx, src_grid)
             in_bounds || continue
@@ -83,7 +93,7 @@ function prolong!(dst::AbstractArray{T,D},
             end
             acc += bv * src[idx_wrapped...]
         end
-        dst[n_dst] = acc
+        @inbounds dst[n_dst] = acc
     end
     return dst
 end

@@ -46,13 +46,17 @@ end
                     for β in 1:D))
         U_core = msm_energy(positions, charges, cell, NTuple{D,Bool}(periodicity(sys)), calc)
         U_atoms = AtomsCalculators.potential_energy(sys, calc)
-        @test U_core == U_atoms
+        # Relaxed from `==` to `isapprox` so threaded reduction order doesn't
+        # break the assertion. Same inputs through the same code path should
+        # still be bit-identical, but defensive against scheduler variation.
+        @test isapprox(U_core, U_atoms; rtol = 1e-12)
     end
 
     @testset "forces and energy_forces consistency" begin
         F   = AtomsCalculators.forces(sys, calc)
         ef  = AtomsCalculators.energy_forces(sys, calc)
-        @test ef.forces == F
+        # Relaxed from `==` to `isapprox` (see note above).
+        @test all(isapprox.(ef.forces, F; rtol = 1e-12))
         # Energy obtained via energy_forces matches potential_energy.
         @test ef.energy ≈ AtomsCalculators.potential_energy(sys, calc)
     end
@@ -61,7 +65,8 @@ end
         F = AtomsCalculators.forces(sys, calc)
         F2 = fill(zero(SVector{3,Float64}), N)
         AtomsCalculators.forces!(F2, sys, calc)
-        @test F2 == F
+        # Relaxed from `==` to `isapprox` (see note above).
+        @test all(isapprox.(F2, F; rtol = 1e-12))
     end
 
     @testset "FD check through AtomsCalculator API (periodic, smooth)" begin

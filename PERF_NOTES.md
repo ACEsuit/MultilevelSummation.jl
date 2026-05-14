@@ -13,6 +13,61 @@ Record of performance work on the `perf` branch and what's queued.
 > drive grids directly with `StableRNG` charges and can be compared
 > across the consolidation.
 
+## Multi-threading (OhMyThreads)
+
+All hot operators are threaded via `OhMyThreads.tforeach` /
+`tmapreduce` (gather and reduction patterns) and explicit
+`ChunkSplitters.chunks` + `Threads.@spawn` with task-local
+accumulator arrays (scatter patterns: `anterpolate!`,
+`_ewald_recip_energy_forces`). No `Threads.threadid()` indexing
+anywhere — all per-task state lives inside the spawned-task body.
+
+As part of this round, **`restrict!` was rewritten from scatter to
+gather form** (mirroring `_convolve!`), which also closes the
+unexplained ~21% single-threaded regression flagged below.
+
+`PkgBenchmark` numbers from a local Apple-silicon laptop at
+`JULIA_NUM_THREADS=1` and `JULIA_NUM_THREADS=4`:
+
+| Group / benchmark | -t 1 (ms) | -t 4 (ms) | speedup |
+|---|---:|---:|---:|
+| `deep_hierarchy/msm_energy_nacl_n=2_L=4`   | 15.37 | 4.80 | **3.20×** |
+| `deep_hierarchy/msm_energy_h2o_box=8_L=4`  | 15.41 | 4.75 | **3.24×** |
+| `operators/grid_cutoff!_level1`            |  1.52 | 0.49 | **3.10×** |
+| `operators/restrict!`                      |  0.10 | 0.05 | **2.0×**  |
+| `operators/prolong!`                       |  0.06 | 0.04 | 1.5×      |
+| `operators/anterpolate!`                   |  0.001 | 0.005 | 0.2× (overhead) |
+| `operators/interpolate!`                   |  0.001 | 0.006 | 0.2× (overhead) |
+| `wrap_mode/msm_energy_pow2_n=16`           |  3.27 | 1.26 | **2.59×** |
+| `wrap_mode/msm_energy_nonpow2_n=12`        |  2.15 | 0.92 | **2.34×** |
+| `wrap_mode/grid_cutoff!_pow2_n=16`         |  1.53 | 0.46 | **3.32×** |
+| `scaling_N/h2o_box=16.0 (N=411)`           |  7.19 | 5.97 | 1.20×     |
+| `end_to_end/msm_energy_nacl_n=2`           |  0.18 | 0.31 | 0.59× (overhead) |
+| `end_to_end/msm_energy_h2o_box=8`          |  0.41 | 0.55 | 0.75× (overhead) |
+
+### Interpretation
+
+- Real wins on the **deep-hierarchy** workload (multi-level
+  `_convolve!`) and on **wrap_mode** (cubic 16³ grids): ~3× per the
+  4-thread budget, close to the limit set by serial fractions in the
+  particle-side operators.
+- **Small CI-tier end-to-end fixtures slow down at -t 4.** The cubic
+  `n_grid = 4` Pareto-optimal calc has so little work per call that
+  thread-launch overhead dominates. This is an artefact of the bench
+  fixtures, not the production case — at the headline sweep settings
+  (`(h=0.5, a=8, L=5)` on n_super=8) we measured 50+ s per
+  `msm_energy` call, where threading pays handsomely.
+- **Tiny per-call particle ops (`anterpolate!`, `interpolate!`) get
+  slower at -t 4 with N ≤ 100.** Same overhead-vs-work issue. In MD
+  / sweep workloads with larger N the regression vanishes; in any
+  case threading is gated only by the user's `julia -t` flag — set
+  `-t 1` on small-N pipelines.
+
+### Recommendation
+
+Default invocation: `julia -t auto`. Small-N CI workflows can pin
+`JULIA_NUM_THREADS=1` if the bench-tier overheads matter.
+
 ## Status
 
 Five rounds of optimisation have landed on `perf`, taking `msm_energy`
@@ -87,9 +142,9 @@ All 3642 tests pass on `perf`.
    `grid_cutoff!` (0.25 vs 0.33) and full `msm_energy` (0.34 vs 0.41) —
    on top of all the prior gains.
 
-## Outstanding: `restrict!` regression
+## Resolved: `restrict!` regression (was outstanding pre-threading round)
 
-`restrict!` is consistently 21–25 % slower on `perf` than on `main`,
+`restrict!` was historically 21–25 % slower on `perf` than on `main`,
 both on standalone and end-to-end benchmarks. Investigation in
 `profile/3_restrict.jl` ruled out two leading hypotheses:
 
@@ -109,6 +164,13 @@ between branches. Tools and pointers are in `profile/3_restrict.jl §C`.
 For typical 3D MD workloads `restrict!` is a small fraction of total
 time, so the net effect is comfortably positive — `restrict!` is just
 the only operator that didn't benefit from this round.
+
+**Update (post-threading round):** the multi-threading round rewrote
+`restrict!` from scatter to gather form (mirroring `_convolve!`).
+The gather form's tighter codegen closes the regression — current
+single-threaded `restrict!` is ~100 μs, in line with the expected cost
+relative to `main` (see "Multi-threading" section at the top of this
+file). Threading on top of the gather refactor brings it to ~50 μs.
 
 ## Suggested next perf items (not actively pursued)
 

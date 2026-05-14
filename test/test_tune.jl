@@ -26,7 +26,10 @@ using Random
         k_cut = 2 * α * αR
         U_direct = ewald_energy(positions, charges, cell;
                                 α = α, R_cut = R_cut, k_cut = k_cut)
-        @test U_tune == U_direct
+        # Relaxed from `==` to `isapprox`: when ewald_energy is threaded, the
+        # reduction order may not be stable bit-for-bit even with identical
+        # inputs (depends on scheduler decisions).
+        @test isapprox(U_tune, U_direct; rtol = 1e-12)
     end
 
     @testset "sweep produces SweepResult rows consistent with msm_energy" begin

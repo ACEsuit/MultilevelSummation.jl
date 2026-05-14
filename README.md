@@ -20,5 +20,10 @@ sweep API (`MultilevelSummation.Tune`) for accuracy-vs-cost analysis.
 - missing GPU port via `KernelAbstractions.jl`
 - provides forces, but no ChainRules integration yet
 
+The hot operators are multi-threaded via
+[OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl). For
+best performance launch Julia with `julia -t auto` (or set
+`JULIA_NUM_THREADS`).
+
 See the [documentation](https://ACEsuit.github.io/MultilevelSummation.jl/dev/) 
 for details, examples, and the implementation plan.

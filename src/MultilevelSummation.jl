@@ -1,6 +1,8 @@
 module MultilevelSummation
 
 using StaticArrays
+using OhMyThreads: tforeach, tmapreduce
+using ChunkSplitters: chunks
 
 # Top-level docstrings for generic function symbols
 include("docstrings.jl")

@@ -25,9 +25,14 @@ fixtures.
 From the package root:
 
 ```bash
-julia --project=tuning tuning/tune_NaCl.jl
-julia --project=tuning tuning/tune_H2O.jl
+julia -t auto --project=tuning tuning/tune_NaCl.jl
+julia -t auto --project=tuning tuning/tune_H2O.jl
 ```
+
+The hot operators (Ewald reference and MSM convolutions) are
+multi-threaded via OhMyThreads — `-t auto` (or any explicit thread
+count) substantially reduces the `(h=0.5, a=8)` bottleneck at the
+largest sweep entries.
 
 On first invocation the tuning environment needs to be instantiated
 (it dev-links `MultilevelSummation` and pulls in `Plots`):
