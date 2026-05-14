@@ -84,13 +84,43 @@ function _anterpolate_impl!(grid_values::AbstractArray{T,D},
                             grid::UniformGrid{D,T},
                             basis,
                             ::Val{S}) where {D, T<:AbstractFloat, S}
+    # Scatter operator: multiple particles can write to the same grid cell,
+    # so we chunk the particle range, give each task a local accumulator
+    # grid, and reduce the locals into `grid_values` after the spawned tasks
+    # finish. State is task-local — never indexed by Threads.threadid().
+    n = length(positions)
+    nchunks = min(n, Threads.nthreads())
+    if nchunks <= 1
+        _anterpolate_chunk!(grid_values, positions, charges, grid, basis, Val(S),
+                            firstindex(positions):lastindex(positions))
+        return grid_values
+    end
+    tasks = map(chunks(eachindex(positions); n = nchunks)) do chunk
+        Threads.@spawn begin
+            local_grid = zeros(T, size(grid_values))
+            _anterpolate_chunk!(local_grid, positions, charges, grid, basis, Val(S), chunk)
+            local_grid
+        end
+    end
+    for t in tasks
+        grid_values .+= fetch(t)
+    end
+    return grid_values
+end
+
+function _anterpolate_chunk!(grid_values::AbstractArray{T,D},
+                             positions::AbstractVector{SVector{D,T}},
+                             charges::AbstractVector{T},
+                             grid::UniformGrid{D,T},
+                             basis,
+                             ::Val{S},
+                             chunk) where {D, T<:AbstractFloat, S}
     off_range = ntuple(_ -> -(S - 1):S, Val(D))
 
-    @inbounds for p in eachindex(positions)
+    @inbounds for p in chunk
         ξ = particle_to_grid(positions[p], grid)
         q = charges[p]
         m0 = SVector{D,Int}(ntuple(α -> floor(Int, ξ[α]), Val(D)))
-        # Per-axis basis values for the window — concretely `NTuple{2S, T}`.
         ϕ_per_axis = ntuple(α -> ntuple(k -> eval_phi(basis,
                                                       ξ[α] - T(m0[α] + (-(S - 1) + k - 1))),
                                         Val(2S)),
@@ -135,7 +165,8 @@ function _interpolate_impl!(potentials::AbstractVector{T},
                             ::Val{S}) where {D, T<:AbstractFloat, S}
     off_range = ntuple(_ -> -(S - 1):S, Val(D))
 
-    @inbounds for p in eachindex(positions)
+    # Threaded over particles — each task writes to its own `potentials[p]`.
+    tforeach(eachindex(positions)) do p
         ξ = particle_to_grid(positions[p], grid)
         m0 = SVector{D,Int}(ntuple(α -> floor(Int, ξ[α]), Val(D)))
         ϕ_per_axis = ntuple(α -> ntuple(k -> eval_phi(basis,
@@ -143,14 +174,14 @@ function _interpolate_impl!(potentials::AbstractVector{T},
                                         Val(2S)),
                             Val(D))
         acc = zero(T)
-        for off in Iterators.product(off_range...)
+        @inbounds for off in Iterators.product(off_range...)
             idx = ntuple(α -> m0[α] + off[α], Val(D))
             idx_wrapped, in_bounds = wrap_index(idx, grid)
             in_bounds || continue
             bv = _tensor_basis_value(ϕ_per_axis, off, S)
             acc += bv * grid_values[idx_wrapped...]
         end
-        potentials[p] = acc
+        @inbounds potentials[p] = acc
     end
     return potentials
 end
@@ -184,7 +215,8 @@ function _interpolate_grad_impl!(grads::AbstractVector{SVector{D,T}},
     off_range = ntuple(_ -> -(S - 1):S, Val(D))
     inv_h = SVector{D,T}(ntuple(α -> one(T) / grid.spacing[α], Val(D)))
 
-    @inbounds for p in eachindex(positions)
+    # Threaded over particles — each task writes to its own `grads[p]`.
+    tforeach(eachindex(positions)) do p
         ξ = particle_to_grid(positions[p], grid)
         m0 = SVector{D,Int}(ntuple(α -> floor(Int, ξ[α]), Val(D)))
         ϕ_per_axis  = ntuple(α -> ntuple(k -> eval_phi(basis,
@@ -196,14 +228,14 @@ function _interpolate_grad_impl!(grads::AbstractVector{SVector{D,T}},
                                           Val(2S)),
                               Val(D))
         acc = zero(SVector{D,T})
-        for off in Iterators.product(off_range...)
+        @inbounds for off in Iterators.product(off_range...)
             idx = ntuple(α -> m0[α] + off[α], Val(D))
             idx_wrapped, in_bounds = wrap_index(idx, grid)
             in_bounds || continue
             e_m = grid_values[idx_wrapped...]
             acc += _tensor_basis_gradient(ϕ_per_axis, ϕp_per_axis, off, S, inv_h) * e_m
         end
-        grads[p] = acc
+        @inbounds grads[p] = acc
     end
     return grads
 end

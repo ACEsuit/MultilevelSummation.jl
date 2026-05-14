@@ -14,6 +14,8 @@ module Reference
 
 using StaticArrays
 using SpecialFunctions
+using OhMyThreads: tmapreduce
+using ChunkSplitters: chunks
 
 export ewald_energy, ewald_energy_forces
 
@@ -75,19 +77,23 @@ function _ewald_real_energy(positions, charges, cell::SMatrix{3,3,T}, α::T, R_c
     N = length(positions)
     L = SVector{3,T}(cell[1,1], cell[2,2], cell[3,3])
     nmax = ntuple(α_ -> ceil(Int, R_cut / L[α_]), 3)
-    U = zero(T)
     R_cut² = R_cut * R_cut
-    @inbounds for i in 1:N, j in 1:N
-        qiqj = charges[i] * charges[j]
-        for n1 in -nmax[1]:nmax[1], n2 in -nmax[2]:nmax[2], n3 in -nmax[3]:nmax[3]
-            (i == j && n1 == 0 && n2 == 0 && n3 == 0) && continue
-            shift = SVector{3,T}(n1 * L[1], n2 * L[2], n3 * L[3])
-            r = positions[i] - positions[j] + shift
-            s² = sum(abs2, r)
-            s² > R_cut² && continue
-            s = sqrt(s²)
-            U += qiqj * erfc(α * s) / s
+    # Threaded scalar reduction over outer particle index.
+    U = tmapreduce(+, 1:N; init = zero(T)) do i
+        local_U = zero(T)
+        @inbounds for j in 1:N
+            qiqj = charges[i] * charges[j]
+            for n1 in -nmax[1]:nmax[1], n2 in -nmax[2]:nmax[2], n3 in -nmax[3]:nmax[3]
+                (i == j && n1 == 0 && n2 == 0 && n3 == 0) && continue
+                shift = SVector{3,T}(n1 * L[1], n2 * L[2], n3 * L[3])
+                r = positions[i] - positions[j] + shift
+                s² = sum(abs2, r)
+                s² > R_cut² && continue
+                s = sqrt(s²)
+                local_U += qiqj * erfc(α * s) / s
+            end
         end
+        local_U
     end
     return U / 2
 end
@@ -96,26 +102,30 @@ function _ewald_real_energy_forces(positions, charges, cell::SMatrix{3,3,T}, α:
     N = length(positions)
     L = SVector{3,T}(cell[1,1], cell[2,2], cell[3,3])
     nmax = ntuple(α_ -> ceil(Int, R_cut / L[α_]), 3)
-    U = zero(T)
     F = zeros(SVector{3,T}, N)
     R_cut² = R_cut * R_cut
     inv_sqrt_π = inv(sqrt(T(π)))
-    @inbounds for i in 1:N, j in 1:N
-        qiqj = charges[i] * charges[j]
-        for n1 in -nmax[1]:nmax[1], n2 in -nmax[2]:nmax[2], n3 in -nmax[3]:nmax[3]
-            (i == j && n1 == 0 && n2 == 0 && n3 == 0) && continue
-            shift = SVector{3,T}(n1 * L[1], n2 * L[2], n3 * L[3])
-            r = positions[i] - positions[j] + shift
-            s² = sum(abs2, r)
-            s² > R_cut² && continue
-            s = sqrt(s²)
-            U += qiqj * erfc(α * s) / s
-            # ∇K_real(r) where K_real(s) = erfc(α s)/s.
-            # dK/ds = [−2α/√π · exp(−α² s²) · s − erfc(α s)] / s²
-            dKds = (-T(2) * α * inv_sqrt_π * exp(-α * α * s²) * s - erfc(α * s)) / s²
-            ∇K = (dKds / s) * r                       # = (dK/ds)·r̂
-            F[i] -= qiqj * ∇K
+    # Thread over outer i; each task writes only F[i].
+    U = tmapreduce(+, 1:N; init = zero(T)) do i
+        local_U = zero(T)
+        local_F = zero(SVector{3,T})
+        @inbounds for j in 1:N
+            qiqj = charges[i] * charges[j]
+            for n1 in -nmax[1]:nmax[1], n2 in -nmax[2]:nmax[2], n3 in -nmax[3]:nmax[3]
+                (i == j && n1 == 0 && n2 == 0 && n3 == 0) && continue
+                shift = SVector{3,T}(n1 * L[1], n2 * L[2], n3 * L[3])
+                r = positions[i] - positions[j] + shift
+                s² = sum(abs2, r)
+                s² > R_cut² && continue
+                s = sqrt(s²)
+                local_U += qiqj * erfc(α * s) / s
+                dKds = (-T(2) * α * inv_sqrt_π * exp(-α * α * s²) * s - erfc(α * s)) / s²
+                ∇K = (dKds / s) * r
+                local_F -= qiqj * ∇K
+            end
         end
+        @inbounds F[i] = local_F
+        local_U
     end
     return U / 2, F
 end
@@ -129,19 +139,23 @@ function _ewald_recip_energy(positions, charges, cell::SMatrix{3,3,T}, α::T, k_
     mmax = ntuple(α_ -> ceil(Int, k_cut * L[α_] / (2π)), 3)
     k_cut² = k_cut * k_cut
     inv_4α² = inv(T(4) * α * α)
-    U = zero(T)
-    @inbounds for m1 in -mmax[1]:mmax[1], m2 in -mmax[2]:mmax[2], m3 in -mmax[3]:mmax[3]
-        (m1 == 0 && m2 == 0 && m3 == 0) && continue
-        k = SVector{3,T}(2π * m1 / L[1], 2π * m2 / L[2], 2π * m3 / L[3])
-        k² = sum(abs2, k)
-        k² > k_cut² && continue
-        Sre = zero(T); Sim = zero(T)
-        for i in eachindex(positions)
-            φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
-            Sre += charges[i] * cos(φ)
-            Sim += charges[i] * sin(φ)
+    # Thread over the outer m1 slice; each task handles its own k-plane.
+    U = tmapreduce(+, -mmax[1]:mmax[1]; init = zero(T)) do m1
+        local_U = zero(T)
+        @inbounds for m2 in -mmax[2]:mmax[2], m3 in -mmax[3]:mmax[3]
+            (m1 == 0 && m2 == 0 && m3 == 0) && continue
+            k = SVector{3,T}(2π * m1 / L[1], 2π * m2 / L[2], 2π * m3 / L[3])
+            k² = sum(abs2, k)
+            k² > k_cut² && continue
+            Sre = zero(T); Sim = zero(T)
+            for i in eachindex(positions)
+                φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
+                Sre += charges[i] * cos(φ)
+                Sim += charges[i] * sin(φ)
+            end
+            local_U += (4π / k²) * exp(-k² * inv_4α²) * (Sre*Sre + Sim*Sim)
         end
-        U += (4π / k²) * exp(-k² * inv_4α²) * (Sre*Sre + Sim*Sim)
+        local_U
     end
     return U / (2V)
 end
@@ -153,29 +167,54 @@ function _ewald_recip_energy_forces(positions, charges, cell::SMatrix{3,3,T}, α
     mmax = ntuple(α_ -> ceil(Int, k_cut * L[α_] / (2π)), 3)
     k_cut² = k_cut * k_cut
     inv_4α² = inv(T(4) * α * α)
+
+    # Each k-vector contributes to ALL forces F[i], so threading over k needs
+    # task-local force arrays. Chunk the outer m1 range, spawn one task per
+    # chunk with a local force accumulator, fetch and reduce.
+    m1_range = -mmax[1]:mmax[1]
+    nchunks  = min(length(m1_range), Threads.nthreads())
+    F        = zeros(SVector{3,T}, N)
+
+    function _chunk_kernel(m1_chunk)
+        local_U = zero(T)
+        local_F = zeros(SVector{3,T}, N)
+        @inbounds for m1 in m1_chunk, m2 in -mmax[2]:mmax[2], m3 in -mmax[3]:mmax[3]
+            (m1 == 0 && m2 == 0 && m3 == 0) && continue
+            k = SVector{3,T}(2π * m1 / L[1], 2π * m2 / L[2], 2π * m3 / L[3])
+            k² = sum(abs2, k)
+            k² > k_cut² && continue
+            Sre = zero(T); Sim = zero(T)
+            for i in eachindex(positions)
+                φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
+                Sre += charges[i] * cos(φ)
+                Sim += charges[i] * sin(φ)
+            end
+            gauss  = exp(-k² * inv_4α²)
+            prefac = (4π / k²) * gauss
+            local_U += prefac * (Sre*Sre + Sim*Sim)
+            for i in 1:N
+                φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
+                imag_part = cos(φ) * Sim - sin(φ) * Sre
+                local_F[i] -= (prefac / V) * charges[i] * imag_part * k
+            end
+        end
+        return local_U, local_F
+    end
+
+    if nchunks <= 1
+        U_total, F_local = _chunk_kernel(m1_range)
+        F .+= F_local
+        return U_total / (2V), F
+    end
+
+    tasks = map(chunks(m1_range; n = nchunks)) do m1_chunk
+        Threads.@spawn _chunk_kernel(m1_chunk)
+    end
     U = zero(T)
-    F = zeros(SVector{3,T}, N)
-    @inbounds for m1 in -mmax[1]:mmax[1], m2 in -mmax[2]:mmax[2], m3 in -mmax[3]:mmax[3]
-        (m1 == 0 && m2 == 0 && m3 == 0) && continue
-        k = SVector{3,T}(2π * m1 / L[1], 2π * m2 / L[2], 2π * m3 / L[3])
-        k² = sum(abs2, k)
-        k² > k_cut² && continue
-        Sre = zero(T); Sim = zero(T)
-        for i in eachindex(positions)
-            φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
-            Sre += charges[i] * cos(φ)
-            Sim += charges[i] * sin(φ)
-        end
-        gauss = exp(-k² * inv_4α²)
-        prefac = (4π / k²) * gauss
-        U += prefac * (Sre*Sre + Sim*Sim)
-        # ∂|S(k)|²/∂r_iα = 2 q_i k_α · (Sim cos(k·r_i) − Sre sin(k·r_i))
-        # F_iα = -∂U_recip/∂r_iα = -(prefac / V) · q_i · k_α · (Sim cos − Sre sin)
-        for i in 1:N
-            φ = k[1]*positions[i][1] + k[2]*positions[i][2] + k[3]*positions[i][3]
-            imag_part = cos(φ) * Sim - sin(φ) * Sre
-            F[i] -= (prefac / V) * charges[i] * imag_part * k
-        end
+    for t in tasks
+        local_U, local_F = fetch(t)
+        U += local_U
+        F .+= local_F
     end
     return U / (2V), F
 end

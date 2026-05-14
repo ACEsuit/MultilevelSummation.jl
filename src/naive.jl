@@ -24,17 +24,23 @@ function naive_energy(positions::AbstractVector{SVector{D,T}},
     N = length(positions)
     @assert length(charges) == N
 
-    U      = zero(T)
     R_cut² = isinf(R_cut) ? T(Inf) : T(R_cut)^2
-    @inbounds for i in 1:N, j in 1:N
-        qiqj = charges[i] * charges[j]
-        for n in Iterators.product(image_ranges...)
-            (i == j && all(==(0), n)) && continue
-            shift = _shift(cell, n)
-            r     = positions[i] - positions[j] + shift
-            sum(abs2, r) > R_cut² && continue
-            U += qiqj * kernel(r)
+    # Threaded scalar reduction over the outer particle index. The per-i
+    # `local_U` lives inside the closure (task-local) and OhMyThreads
+    # merges via `+`. No threadid()-indexed state.
+    U = tmapreduce(+, 1:N; init = zero(T)) do i
+        local_U = zero(T)
+        @inbounds for j in 1:N
+            qiqj = charges[i] * charges[j]
+            for n in Iterators.product(image_ranges...)
+                (i == j && all(==(0), n)) && continue
+                shift = _shift(cell, n)
+                r     = positions[i] - positions[j] + shift
+                sum(abs2, r) > R_cut² && continue
+                local_U += qiqj * kernel(r)
+            end
         end
+        local_U
     end
     return U / 2
 end
@@ -57,19 +63,26 @@ function naive_energy_forces(positions::AbstractVector{SVector{D,T}},
     N = length(positions)
     @assert length(charges) == N
 
-    U      = zero(T)
     forces = zeros(SVector{D,T}, N)
     R_cut² = isinf(R_cut) ? T(Inf) : T(R_cut)^2
-    @inbounds for i in 1:N, j in 1:N
-        qiqj = charges[i] * charges[j]
-        for n in Iterators.product(image_ranges...)
-            (i == j && all(==(0), n)) && continue
-            shift = _shift(cell, n)
-            r     = positions[i] - positions[j] + shift
-            sum(abs2, r) > R_cut² && continue
-            U          += qiqj * kernel(r)
-            forces[i]  -= qiqj * grad(kernel, r)
+    # Threaded over outer i. Each task touches only forces[i] for its own
+    # i, so the scatter is race-free; energy is gathered via tmapreduce.
+    U = tmapreduce(+, 1:N; init = zero(T)) do i
+        local_U = zero(T)
+        local_F = zero(SVector{D,T})
+        @inbounds for j in 1:N
+            qiqj = charges[i] * charges[j]
+            for n in Iterators.product(image_ranges...)
+                (i == j && all(==(0), n)) && continue
+                shift = _shift(cell, n)
+                r     = positions[i] - positions[j] + shift
+                sum(abs2, r) > R_cut² && continue
+                local_U += qiqj * kernel(r)
+                local_F -= qiqj * grad(kernel, r)
+            end
         end
+        @inbounds forces[i] = local_F
+        local_U
     end
     return U / 2, forces
 end

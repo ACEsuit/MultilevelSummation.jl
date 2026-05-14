@@ -47,29 +47,45 @@ end
 
 # Generic stencil convolution.
 #
-# Specialised per (Per, Sz) via `@generated`: the per-axis loop bounds are
-# computed once per destination grid point `m` (instead of doing a bounds
-# check inside the inner stencil loop), and the inner body is unrolled
-# per-axis according to the boundary condition. Result is a fully-typed,
-# branch-free nested loop with:
+# Two-layer design:
+#   - `_convolve!` (non-generated outer): handles the parallel destination
+#     loop via OhMyThreads.tforeach. Each `m` writes to its own `e[m]`,
+#     so there's no race.
+#   - `_convolve_at!` (@generated inner): per-axis unrolled body for a
+#     single destination index `m`. Specialised on `(Per, Sz)`:
 #
-#   • periodic axis α:  loop `off ∈ -smax_α : smax_α`,
-#                       source index `n_α = mod(m_α-1+off, Sz_α) + 1`
-#                       (`Sz_α` splices in as an integer literal, so the
-#                        compiler can replace `mod` with a multiply-high).
+#     • periodic axis α:  loop `off ∈ -smax_α : smax_α`,
+#                         source index `n_α = mod(m_α-1+off, Sz_α) + 1`
+#                         (`Sz_α` splices in as an integer literal, so
+#                          `mod` lowers to multiply-high; power-of-2 sizes
+#                          use a bitmask).
 #
-#   • open axis α:      loop `off ∈ max(-smax_α, -(m_α-1)) : min(smax_α, Sz_α-m_α)`,
-#                       source index `n_α = m_α + off`
-#                       (no bounds check needed — the loop bounds guarantee
-#                        the access is in-range).
+#     • open axis α:      loop `off ∈ max(-smax_α, -(m_α-1)) : min(smax_α, Sz_α-m_α)`,
+#                         source index `n_α = m_α + off`
+#                         (no bounds check needed — the loop bounds
+#                          guarantee the access is in-range).
 #
-# All accesses inside the `@inbounds` outer loop are bounds-check-free at
-# runtime.
-@generated function _convolve!(e::AbstractArray{T,D},
-                                q::AbstractArray{T,D},
-                                stencil::AbstractArray{T,D},
-                                smax::NTuple{D,Int},
-                                ::UniformGrid{D,T,Per,Sz}) where {D,T<:AbstractFloat,Per,Sz}
+# Splitting the closure out of the @generated body avoids the
+# "@generated function body is not pure" error.
+function _convolve!(e::AbstractArray{T,D},
+                    q::AbstractArray{T,D},
+                    stencil::AbstractArray{T,D},
+                    smax::NTuple{D,Int},
+                    grid::UniformGrid{D,T,Per,Sz}) where {D,T<:AbstractFloat,Per,Sz}
+    @assert size(stencil) == ntuple(α -> 2 * smax[α] + 1, Val(D))
+    fill!(e, zero(T))
+    tforeach(CartesianIndices(e)) do m
+        _convolve_at!(e, q, stencil, smax, grid, m)
+    end
+    return e
+end
+
+@generated function _convolve_at!(e::AbstractArray{T,D},
+                                   q::AbstractArray{T,D},
+                                   stencil::AbstractArray{T,D},
+                                   smax::NTuple{D,Int},
+                                   ::UniformGrid{D,T,Per,Sz},
+                                   m::CartesianIndex{D}) where {D,T<:AbstractFloat,Per,Sz}
     @assert Per isa NTuple{D,Bool}
     @assert Sz  isa NTuple{D,Int}
 
@@ -119,18 +135,15 @@ end
     end
 
     # Per-grid-point binding of m_α from the CartesianIndex.
-    m_decls    = Expr[:($(m_syms[α]) = m[$α]) for α in 1:D]
-    stencil_dim_expr = Expr(:tuple, (:(2 * smax[$α] + 1) for α in 1:D)...)
+    m_decls = Expr[:($(m_syms[α]) = m[$α]) for α in 1:D]
 
     return quote
-        @assert size(stencil) == $stencil_dim_expr
-        fill!(e, zero($T))
-        @inbounds for m in CartesianIndices(e)
+        @inbounds begin
             $(m_decls...)
             acc = zero($T)
             $body
             e[m] = acc
         end
-        return e
+        return nothing
     end
 end
