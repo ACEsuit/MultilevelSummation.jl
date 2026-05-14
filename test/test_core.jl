@@ -1,6 +1,7 @@
 using Test
 using MultilevelSummation
 using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
+using MultilevelSummation.Reference: naive_energy
 using StaticArrays
 using StableRNGs
 

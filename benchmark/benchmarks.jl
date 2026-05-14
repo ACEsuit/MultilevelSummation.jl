@@ -1,6 +1,7 @@
 using BenchmarkTools
 using MultilevelSummation
 using MultilevelSummation.Tune: build_nacl, build_h2o
+using MultilevelSummation.Reference: naive_energy
 using StaticArrays
 using StableRNGs
 using Random

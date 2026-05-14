@@ -19,8 +19,9 @@ include("basis/cubic.jl")
 # splittings (Coulomb-only for now)
 include("splittings/hardy_c2cubic.jl")
 
-# Phase 2: naive O(N²) reference (open / periodic / mixed BC)
-include("naive.jl")
+# Orthorhombic-cell + periodic-image helpers shared between core.jl
+# and the Reference submodule.
+include("cell_helpers.jl")
 
 # Phase 3: grid + anterpolation / interpolation
 include("grid.jl")
@@ -46,7 +47,6 @@ export CubicC1, eval_phi, eval_phi_prime, support_radius
 export HardyC2Cubic, short_range, long_range_level, top_level
 export short_range_grad, long_range_level_grad, top_level_grad
 export requires_neutralising_background, level_scale
-export naive_energy, naive_energy_forces
 export UniformGrid, grid_zeros, npoints, wrap_index, particle_to_grid
 export anterpolate!, interpolate!, interpolate_grad!
 export restrict!, prolong!, coarser_grid
@@ -60,7 +60,7 @@ export grad
 # Public submodules — must come last so they can `using ..MultilevelSummation`
 # --------------------------------------------------------------------------
 
-# Naive reference implementations (Ewald, ...) used by tests and tuning.
+# Reference implementations (Ewald, naive direct sum) used by tests and tuning.
 include("reference/Reference.jl")
 
 # Programmatic hyperparameter sweeps.
