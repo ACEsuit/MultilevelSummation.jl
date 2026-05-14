@@ -2,6 +2,17 @@
 
 Record of performance work on the `perf` branch and what's queued.
 
+> **Baseline note (post-`tune` consolidation).**
+> The benchmark suite was migrated from random-system fixtures
+> (`_make_periodic_system`, N=32) to realistic NaCl/H2O configurations
+> from `Tune.build_nacl` / `Tune.build_h2o` at the Pareto-optimal
+> `(h, a, L)` from the tuning sweeps. The `PkgBenchmark.judge`
+> comparisons against pre-consolidation commits below are therefore
+> **no longer apples-to-apples** for the `end_to_end`, `scaling_N`,
+> and `precision` groups. The `operators` and `wrap_mode` groups still
+> drive grids directly with `StableRNG` charges and can be compared
+> across the consolidation.
+
 ## Status
 
 Five rounds of optimisation have landed on `perf`, taking `msm_energy`

@@ -1,26 +1,19 @@
 using Test
 using MultilevelSummation
 using MultilevelSummation.Tune
-using MultilevelSummation.Tune: SweepResult
+using MultilevelSummation.Tune: SweepResult, build_nacl
 using MultilevelSummation.Reference: ewald_energy
 using StaticArrays
-using StableRNGs
-
-# Small periodic Coulomb system that fits MSM's n_grid divisibility constraints
-# at multiple (h, L) combos for h ∈ {0.5, 1.0, 2.0}.
-function _periodic_neutral_system(N::Int, h::Float64, n_fine::Int; seed = 0xCE11)
-    rng = StableRNG(seed)
-    box = h * n_fine
-    cell = SMatrix{3,3,Float64}(box * one(SMatrix{3,3,Float64}))
-    periodic = (true, true, true)
-    positions = [SVector{3,Float64}((rand(rng, 3) .* box)...) for _ in 1:N]
-    charges   = randn(rng, N)
-    charges  .-= sum(charges) / N
-    return positions, charges, cell, periodic
-end
+using Random
 
 @testset "Tune" begin
-    positions, charges, cell, periodic = _periodic_neutral_system(8, 0.5, 16)
+    # Realistic fixture: small NaCl supercell (n_super=2 → 64 ions, box=8 Å).
+    # The default σ=0 gives a perfectly reproducible perfect lattice; for
+    # the sweep-row consistency test we use σ=0.05 to exercise a generic
+    # disordered configuration without large displacements that would
+    # break some L=2 settings via short-range cancellation.
+    positions, charges, cell, periodic =
+        build_nacl(2; σ = 0.05, rng = MersenneTwister(0xCE11))
 
     @testset "ewald_reference matches direct ewald_energy" begin
         U_tune = Tune.ewald_reference(positions, charges, cell; tol = 1e-9)
