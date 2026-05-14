@@ -15,7 +15,8 @@ examples page.
 | Script | System | Status |
 |---|---|---|
 | [`tune_NaCl.jl`](tune_NaCl.jl) | rock-salt NaCl supercell, ±1 ion charges | shipped |
-| `tune_H2O.jl` | TIP3P-like water box | planned |
+| [`tune_NaCl_perturbed.jl`](tune_NaCl_perturbed.jl) | rock-salt NaCl with σ ≈ 0.1 Å thermal displacements | shipped |
+| [`tune_H2O.jl`](tune_H2O.jl) | TIP3P-like liquid-water box (Poisson-disk oxygens, random orientations) | shipped |
 
 ## How to run
 
