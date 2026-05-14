@@ -1,6 +1,24 @@
-module EwaldRef
+"""
+    MultilevelSummation.Reference
+
+Naive reference implementations for the Coulomb pair sum, used as
+absolute baselines in tests and tuning. Currently exposes a 3D Ewald
+reference for fully-periodic orthorhombic cells.
+
+    using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
+
+Future references (2D Ewald for slab geometry, neighbour-list naive
+references, etc.) can live in this same namespace.
+"""
+module Reference
+
+using StaticArrays
+using SpecialFunctions
+
+export ewald_energy, ewald_energy_forces
+
 # Naive 3D Ewald reference for Coulomb 1/r in a fully periodic orthorhombic
-# cell. Lives only in `test/` — not part of the shipped package.
+# cell.
 #
 # Convention (Gaussian-like, no 4πε₀):
 #     U = (1/2) Σ_{i,j,n}'  q_i q_j / |r_i − r_j + n·L|
@@ -12,10 +30,14 @@ module EwaldRef
 #             S(k) = Σ_i q_i exp( i k · r_i )
 #     U_self  = − (α / √π) Σ_i q_i²
 
-using StaticArrays, SpecialFunctions
-
 # Public entry points -------------------------------------------------------
 
+"""
+    ewald_energy(positions, charges, cell; α, R_cut, k_cut) -> Real
+
+Naive 3D Ewald total energy for fully-periodic orthorhombic Coulomb. The
+charge sum must be (approximately) zero.
+"""
 function ewald_energy(positions::Vector{SVector{3,T}},
                       charges::Vector{T},
                       cell::SMatrix{3,3,T};
@@ -28,6 +50,13 @@ function ewald_energy(positions::Vector{SVector{3,T}},
     return U_real + U_recip + U_self
 end
 
+"""
+    ewald_energy_forces(positions, charges, cell; α, R_cut, k_cut)
+        -> (energy::Real, forces::Vector{SVector{3,T}})
+
+Same as `ewald_energy`, but also returns the per-particle forces
+`F_i = -∂U/∂r_i`.
+"""
 function ewald_energy_forces(positions::Vector{SVector{3,T}},
                              charges::Vector{T},
                              cell::SMatrix{3,3,T};
@@ -166,4 +195,4 @@ function _assert_neutral(charges)
         throw(ArgumentError("Ewald reference requires Σ q ≈ 0, got $s"))
 end
 
-end # module EwaldRef
+end # module Reference

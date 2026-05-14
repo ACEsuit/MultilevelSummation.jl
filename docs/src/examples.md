@@ -106,17 +106,51 @@ calc = MSMCalculator(HardyC2Cubic(2.0, 3), CubicC1(), 0.5)
 msm_energy(positions, charges, cell, periodic, calc)
 ```
 
-## Naive Ewald reference (test-only)
+## Naive Ewald reference
 
-The Ewald reference lives under `test/refs/`, not in the package, but
-the source is self-contained:
+A naive 3D Ewald reference lives in the public
+`MultilevelSummation.Reference` submodule. Used in tests for
+periodic-Coulomb accuracy checks and as the reference inside
+`MultilevelSummation.Tune.sweep`:
 
 ```julia
-include(joinpath(pkgdir(MultilevelSummation), "test", "refs", "ewald.jl"))
-using .EwaldRef: ewald_energy, ewald_energy_forces
+using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
 
-U = ewald_energy(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
+U      = ewald_energy(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
+U, F   = ewald_energy_forces(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
 ```
 
-It performs the standard erfc / reciprocal-Gaussian split and is used in
-the test suite for periodic-Coulomb accuracy checks (`test_core.jl`).
+For auto-tuned parameters use the `Tune` wrapper:
+
+```julia
+using MultilevelSummation.Tune
+U = Tune.ewald_reference(positions, charges, cell; tol = 1e-9)
+```
+
+Both perform the standard erfc / reciprocal-Gaussian split and self-
+validate via α-invariance in `test/test_ewald.jl`.
+
+## Programmatic hyperparameter sweep
+
+```@example tune
+using MultilevelSummation
+using MultilevelSummation.Tune
+using StaticArrays, Random
+Random.seed!(0xABCD)
+
+L = 8.0; cell = SMatrix{3,3,Float64}(L * one(SMatrix{3,3,Float64}))
+periodic = (true, true, true)
+positions = [SVector{3,Float64}((rand(3) .* L)...) for _ in 1:32]
+charges = randn(32); charges .-= sum(charges) / length(charges)
+
+U_ref = Tune.ewald_reference(positions, charges, cell)
+results = Tune.sweep(positions, charges, cell, periodic;
+                    reference  = U_ref,
+                    h_values   = (0.5, 1.0),
+                    a_values   = (1.0, 2.0),
+                    L_strategy = :all)
+length(results), Tune.recommend(results; max_rel_err = 0.1)
+```
+
+The shipped `tuning/tune_NaCl.jl` is a thin caller of this same API on
+realistic NaCl supercells — see `tuning/README.md` for how to run it.

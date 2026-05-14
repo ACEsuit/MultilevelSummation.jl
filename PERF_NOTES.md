@@ -1,104 +1,144 @@
-# Performance follow-ups
+# Performance notes
 
-Live notes on performance work, including what's done and what's queued.
+Record of performance work on the `perf` branch and what's queued.
 
-## Done so far (on the `perf` branch)
+> **Baseline note (post-`tune` consolidation).**
+> The benchmark suite was migrated from random-system fixtures
+> (`_make_periodic_system`, N=32) to realistic NaCl/H2O configurations
+> from `Tune.build_nacl` / `Tune.build_h2o` at the Pareto-optimal
+> `(h, a, L)` from the tuning sweeps. The `PkgBenchmark.judge`
+> comparisons against pre-consolidation commits below are therefore
+> **no longer apples-to-apples** for the `end_to_end`, `scaling_N`,
+> and `precision` groups. The `operators` and `wrap_mode` groups still
+> drive grids directly with `StableRNG` charges and can be compared
+> across the consolidation.
 
-1. **PBC into the type parameter** (`UniformGrid{D,T,Per,Sz}`). Removed
-   the runtime branch on `g.periodic[α]` in `wrap_index` and adjacent
-   call sites.
+## Status
 
-2. **Grid size into the type parameter.** Per-axis extent `n_α` is now
-   a compile-time constant via the `Sz` type parameter, so any code
-   that does `mod(idx, n_α)` or `idx < n_α` sees an integer literal
-   instead of a runtime struct-field load. For *general* integer
-   constants, the compiler lowers `mod` to a multiply-high sequence
-   (≈ 5–10 cycles) — already a clean win over a runtime division.
+Five rounds of optimisation have landed on `perf`, taking `msm_energy`
+in 3D from ~1× (baseline `main`) to **~3× faster** with comparable
+allocation reductions, and the per-particle anter/interpolation ops
+from heavy boxing to bounds-check-free, allocation-free tight loops
+(~100× microbench speedup).
 
-3. **Bounds-check-free `_convolve!`** (`gridcutoff.jl`). `@generated`
-   per `(Per, Sz)`. The per-axis stencil loop is unrolled, the source
-   index is bounds-clipped at the *loop bounds* (open axes) or wrapped
-   by `mod` (periodic axes) — no per-iteration check inside the inner
-   loop.
+Cumulative `PkgBenchmark.judge(perf, main)` highlights:
 
-4. **Type-stable `anterpolate!` / `interpolate!` / `interpolate_grad!`**
-   via a barrier function (`Val(support_radius(basis))` lifted into a
-   type parameter `S` for the `_impl!` body) plus two small `@generated`
-   helpers (`_tensor_basis_value`, `_tensor_basis_gradient`) for the
-   per-axis tensor product. Eliminates `bv::ANY` and the abstract
-   inner tuples in `ϕ_per_axis`, unlocking SIMD and removing boxing
-   allocations.
+| Operation | perf / main | Speedup |
+|---|---|---|
+| `msm_energy_D=3` | 0.32 | 3.1× |
+| `msm_energy_forces_D=3` | 0.28 | 3.6× |
+| `grid_cutoff!_level1` (n=8, pow2) | 0.30 | 3.3× |
+| `grid_cutoff!_pow2_n=16` | 0.25 | 4.0× |
+| `grid_cutoff!_nonpow2_n=12` | 0.33 | 3.0× |
+| `msm_energy_pow2_n=16` | 0.34 | 2.9× |
+| `msm_energy_nonpow2_n=12` | 0.41 | 2.4× |
+| `anterpolate!` / `interpolate!` | 0.01 / 0.01 | ~100× |
+| `interpolate_grad!` | below measurement floor | — |
+| `top_level!` | 0.86–0.92 | 1.1× |
+| `prolong!` | 0.76–1.13 | run-to-run noise around 1× |
+| `restrict!` | **1.21–1.25** :x: | **~21 % slower** (unexplained) |
 
-Cumulative result vs `main` (judged via `PkgBenchmark.judge`):
+All 3642 tests pass on `perf`.
 
-- `msm_energy_D=3`: **~3× faster**
-- `msm_energy_forces_D=3`: **~3.4× faster**
-- `anterpolate!` / `interpolate!`: **~100×** (was bottlenecked by
-  type instability + boxing)
-- `grid_cutoff!`: ~3.2× faster
-- Outstanding regressions: `restrict!` ≈ 1.24×, `prolong!` ≈ 1.13×
-  (from `Vector{Any}` storage of the level hierarchy — one dynamic
-  dispatch per call into transfer ops). For 3D-MD-typical workloads
-  these are a small fraction of total time so the trade-off is net
-  positive.
+## What's done
 
-## Next: power-of-2 grid sizes (cheaper periodic wrap)
+1. **PBC into the type parameter.** `UniformGrid{D,T}` → `UniformGrid{D,T,Per}`,
+   where `Per::NTuple{D,Bool}` is the per-axis periodicity carried at the
+   type level. Removed the runtime branch on `g.periodic[α]` inside
+   `wrap_index` and the other operators. A `getproperty` shim keeps
+   `g.periodic` working as before so no call site needed to change.
 
-### Why it should help
+2. **Grid size into the type parameter.** `UniformGrid{D,T,Per}` →
+   `UniformGrid{D,T,Per,Sz}`, where `Sz::NTuple{D,Int}` is the per-axis
+   extent at the type level. The `size` field is gone; `getproperty`
+   returns `Sz`. The compiler now sees `mod(idx, n)` and `idx < n` with
+   `n` an integer literal — `mod` lowers to a multiply-high sequence.
+   `coarser_grid` propagates `Per` and produces a new `Sz`; the
+   level-hierarchy storage in `_msm_compute` became `Vector{Any}` (each
+   level is a different concrete `Sz` type), with one dynamic dispatch
+   per call boundary that turned out to be ~free.
 
-With `Sz` already in the type, the compiler sees `mod(idx, n_α)` where
-`n_α` is an integer literal. For a *general* constant `n`, this lowers
-to a multiply-high sequence — already faster than runtime division but
-still several cycles. For a **power-of-two** constant `n = 2^k`, the
-operation collapses to a single bitwise AND:
+3. **Bounds-check-free `_convolve!`.** `gridcutoff.jl`'s convolution is
+   now a `@generated` function specialised on `(Per, Sz)`. The per-axis
+   inner loop is unrolled; for periodic axes it iterates the full
+   `-smax:smax` range with a `mod`-wrap, and for open axes it clips the
+   *loop bounds* to `max(-smax, -(m-1)):min(smax, Sz-m)` so the source
+   index is in-range by construction (no per-iteration check).
 
-```
-mod(idx, n)   →   idx & (n - 1)
-```
+4. **Type-stable `anterpolate!` / `interpolate!` / `interpolate_grad!`.**
+   The three particle ↔ grid operators now use a barrier-function pattern
+   (`Val(support_radius(basis))` lifted to type parameter `S` for the
+   `_impl!` body) plus two small `@generated` helpers
+   (`_tensor_basis_value`, `_tensor_basis_gradient`) for the per-axis
+   tensor product. Eliminated `bv::ANY` and the abstract inner tuples in
+   `ϕ_per_axis`, unlocking SIMD and removing the heap allocations the
+   boxed accumulator was causing.
 
-That's one cycle vs. roughly five to ten. On the hot `grid_cutoff!`
-periodic path for the user's profile (24 M `mod`s per `msm_energy`
-call), even saving five cycles each is ≈ 120 M cycles ≈ 50 ms on a
-2.4 GHz core — i.e. an additional ≈ 2× on top of what we already have
-for the *periodic* case.
+5. **Power-of-2 bitmask wrap for periodic axes.** In the same `@generated`
+   blocks (`wrap_index`, `_convolve!`), when `Sz[α]` is a power of two,
+   the generator emits
 
-For *open* BC there is no `mod` in the hot path (the bounds-clip happens
-at the loop limits), so this optimisation has no effect there. The
-current profiling script is open BC; switch to a periodic test to see
-the win.
+       ((idx + n) & (n - 1)) + 1
 
-### What to change
+   instead of `mod(idx, n) + 1`. The benchmark suite was extended with
+   a `wrap_mode` group that pairs a pow2 size (n=16) and a non-pow2 size
+   (n=12) so the bitmask win is visible in `PkgBenchmark.judge` output.
+   The pow2 path is **~20 % faster than the non-pow2 path** on both
+   `grid_cutoff!` (0.25 vs 0.33) and full `msm_energy` (0.34 vs 0.41) —
+   on top of all the prior gains.
 
-The infrastructure already enforces `n_α` divisible by `2^{L-1}` for
-periodic axes (via the `2^{L-1}` round-up in `build_grid_hierarchy`).
-Adding "and also a power of two" is one extra divisibility check.
+## Outstanding: `restrict!` regression
 
-Two implementation options, in order of preference:
+`restrict!` is consistently 21–25 % slower on `perf` than on `main`,
+both on standalone and end-to-end benchmarks. Investigation in
+`profile/3_restrict.jl` ruled out two leading hypotheses:
 
-1. **Detect at codegen.** In `wrap_index` and `_convolve!`, when
-   generating the per-axis expression, check `ispow2(Sz[α])` and emit
-   `(idx + Sz[α]) & ($(Sz[α]-1))` or similar instead of `mod(idx, Sz[α])`.
-   This is local to the existing `@generated` blocks and doesn't change
-   any public interface. The `(idx + Sz[α])` is to handle negative
-   `idx` correctly without an extra branch (since `Sz[α] > smax_α` we
-   have `idx + Sz[α] ≥ 0`).
+- **Internal type instability**: `code_warntype` shows `restrict!`'s body
+  is fully type-stable on `perf` — `bv::Float64`, `s::Core.Const(2)` via
+  const-prop on `support_radius`, no `::Any` anywhere.
+- **`Vector{Any}` dispatch overhead in `_msm_compute`**: a direct call
+  to `restrict!` and a call through `grids_any::Vector{Any}` measure
+  within ~50 ns of each other (98.0 μs each) — totally lost in noise.
 
-2. **Force power-of-two grid sizes globally.** Change
-   `build_grid_hierarchy` to round `n_α` up to the next power of two
-   (instead of the next multiple of `2^{L-1}`). Memory cost is at most
-   2× per axis on open BCs; for periodic BCs the cell determines
-   `n_α` so the user would need to choose a power-of-2 cell length, but
-   most practical periodic cells satisfy this anyway.
+So the regression is a subtler codegen-level interaction (likely between
+the unchanged `restrict!` body and the new `@generated wrap_index`, or
+the per-level concrete `Sz` types). Not yet diagnosed. Suggested next
+investigation: `Cthulhu.@descend` or side-by-side `@code_native` diff
+between branches. Tools and pointers are in `profile/3_restrict.jl §C`.
 
-Option 1 is the right starting point — local, zero API change, only
-fires when the size is already a power of two. We can revisit option
-2 if there's pressure to force the case.
+For typical 3D MD workloads `restrict!` is a small fraction of total
+time, so the net effect is comfortably positive — `restrict!` is just
+the only operator that didn't benefit from this round.
 
-### Test we'd want
+## Suggested next perf items (not actively pursued)
 
-A periodic-BC version of `profile/1.jl` (currently the script uses
-`periodic = ntuple(_ -> false, D)`, switch to `true`) plus a
-`PkgBenchmark.judge` comparison between branches. Expected wins
-concentrated on `grid_cutoff!_level1` and on any operator that calls
-`wrap_index` on a periodic axis. Expected null result on open-BC
-benchmarks.
+In rough order of expected payoff:
+
+1. **Apply the bounds-free `@generated` treatment to `restrict!` and
+   `prolong!`.** Same pattern as `_convolve!` — clip the loop range per
+   destination grid point for open axes, full range with bitmask/mod
+   for periodic. Probably resolves the `restrict!` regression and lets
+   both transfer ops benefit from the type-parameter machinery.
+
+2. **Diagnose the residual `restrict!` regression with Cthulhu/asm
+   diff.** Even before (1) lands, knowing the root cause is useful.
+
+3. **GPU port via `KernelAbstractions.jl`.** The current CPU code is
+   "kernel-shaped" and the per-axis dispatch is at codegen rather than
+   runtime, so the port should be mostly mechanical. `grid_cutoff!` is
+   the obvious headline kernel — it's already a perfect output-parallel
+   stencil, expected 100–500× on a modern GPU.
+
+4. **Stencil tiling / shared-memory layout for `grid_cutoff!`** (CPU
+   *and* GPU). The current loop nest is column-major-correct but
+   doesn't tile for cache. A small tile size that fits L1 + halo
+   should give another factor on big grids.
+
+5. **Multithreading via `@threads` for the outer `m` loop of
+   `_convolve!`** and the particle loops in anter/interpolate. Each is
+   embarrassingly parallel.
+
+6. **`Float32` SIMD.** Float64 currently wins/ties Float32 in our
+   benchmarks because the bottleneck was allocation/memory, not flops.
+   With everything now type-stable and allocation-free, Float32 should
+   pull ahead if the inner loops are wide enough — worth re-measuring.

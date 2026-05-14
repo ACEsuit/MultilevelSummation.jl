@@ -54,4 +54,14 @@ export MSMCalculator, msm_energy, msm_energy_forces
 export build_grid_hierarchy, kernel_self_value
 export grad
 
+# --------------------------------------------------------------------------
+# Public submodules — must come last so they can `using ..MultilevelSummation`
+# --------------------------------------------------------------------------
+
+# Naive reference implementations (Ewald, ...) used by tests and tuning.
+include("reference/Reference.jl")
+
+# Programmatic hyperparameter sweeps.
+include("tune/Tune.jl")
+
 end # module MultilevelSummation

@@ -1,9 +1,7 @@
 using Test
 using StaticArrays
 using StableRNGs
-
-include("refs/ewald.jl")
-using .EwaldRef: ewald_energy, ewald_energy_forces
+using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
 
 # Build a random neutral system in an orthorhombic cell.
 function _random_neutral_system(rng, N::Int, L::Float64)

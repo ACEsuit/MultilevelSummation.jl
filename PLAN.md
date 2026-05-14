@@ -1,4 +1,4 @@
-# MultilevelSummation.jl — Prototype Implementation Plan (rev. 5)
+# MultilevelSummation.jl — Prototype Implementation Plan (rev. 6)
 
 A Julia **package** prototype of the **Multilevel Summation Method (MSM)**
 following Hardy, Wu, Phillips, Stone, Skeel, Schulten
@@ -10,6 +10,51 @@ Goal: a clean, testable CPU reference that grows into a performant
 CPU+GPU implementation via `KernelAbstractions.jl`, exposed as an
 `AtomsCalculators.AbstractCalculator`, and ready to register as a Julia
 package once correctness is established.
+
+---
+
+## Status (current)
+
+**The CPU prototype is functionally complete.** All eight phases below are
+implemented, with **3686 unit tests passing** on `perf`.
+
+What's been built:
+- **Math primitives** (`InversePower{N}`, `Coulomb` alias, `RationalDecay{N}`,
+  `CubicC1` basis, `HardyC2Cubic` splitting for Coulomb).
+- **Naive O(N²) reference** for arbitrary translation-invariant kernels and
+  arbitrary per-axis BC.
+- **`MultilevelSummation.Reference` submodule** — naive 3D Ewald reference
+  for periodic Coulomb, self-validated via α-invariance and FD gradient.
+  Available as part of the package; no `include()` of test files needed.
+- **Grid hierarchy + transfer / convolution operators** (`anterpolate!`,
+  `interpolate!`, `interpolate_grad!`, `restrict!`, `prolong!`,
+  `grid_cutoff!`, `top_level!`, `apply_neutralising_background!`).
+- **End-to-end MSM** (`msm_energy`, `msm_energy_forces`) with the
+  `MSMCalculator{T,S,B}` config; `AtomsCalculators` wrapper for AtomsBase
+  systems with unit-stripping.
+- **`MultilevelSummation.Tune` submodule** — programmatic hyperparameter
+  sweep API (`sweep`, `pareto_front`, `recommend`, `ewald_reference`).
+
+What's been verified:
+- Convergence in `a` and `h` matches the paper's `O(h^p / a^{p+1})` scaling.
+- FD gradient check for periodic MSM matches the analytic forces to ~1e-10.
+- Lattice-translation invariance and translation-invariance for open systems.
+- Periodic Coulomb MSM tracks the Ewald reference to small `a`-dependent
+  thresholds.
+
+Repository layout: `src/` for shipped code (with `reference/` and `tune/`
+subfolders for the public submodules), `test/` for tests, `docs/` with a
+built Documenter site, `benchmark/` with a PkgBenchmark suite (a
+`wrap_mode` group covers pow2-vs-non-pow2 periodic comparison), `profile/`
+with three interactive profiling scripts (`1.jl` open-BC, `2.jl` periodic,
+`3_restrict.jl` regression diagnostic), `tuning/` with realistic-system
+hyperparameter sweep scripts (`tune_NaCl.jl` shipped, `tune_H2O.jl`
+planned). CI on `.github/workflows/CI.yml` and docs on `Documenter.yml`.
+
+**Performance status.** Five rounds of work on the `perf` branch produced
+roughly **3× speedup** on `msm_energy` in 3D vs the original prototype
+(see [`PERF_NOTES.md`](PERF_NOTES.md) for the full record). Further perf
+work is *paused* in favour of the next-steps roadmap below.
 
 ---
 
@@ -340,8 +385,10 @@ that don't need a configuration.
 
 ### Phase 2b — Ewald reference for 3D periodic Coulomb (≈ ½ day)
 
-Test-only infrastructure. Lives in `test/refs/ewald.jl`, not shipped
-with the package.
+Originally test-only infrastructure under `test/refs/`. **Now lifted
+to `src/reference/Reference.jl` as the `MultilevelSummation.Reference`
+submodule**, since both the test suite and `MultilevelSummation.Tune`
+need it. Same code, public namespace.
 
 **Build:**
 - `ewald_energy_forces(positions, charges, cell; α, R_cut, k_cut)`:
@@ -472,24 +519,46 @@ Steps:
 
 ---
 
-## 7. Remaining open questions (deferred, not blockers)
+## 7. Remaining open questions and follow-ups
 
-1. **Splittings for `InversePower{N ≠ 1}` and `RationalDecay`.** Hardy
-   γ isn't directly reusable for these. A generic design for these
-   families is the next thing to discuss once the Coulomb path is
-   green. Until then, MSM end-to-end only runs on Coulomb.
-2. **2D Ewald / slab geometry reference.** Mixed BC (periodic in `xy`,
-   open in `z`) — the configuration the paper most emphasises — has no
-   absolute reference in the prototype. Phase 7 falls back to
-   invariance + self-consistency for that case. Revisit when needed.
-3. **AtomsBase charge property name.** Hard-coded to `:charge` for now;
-   generalise later.
-4. **Test thresholds.** Calibrate empirically from the Phase-7
-   convergence sweep.
-5. **Vector-charge concrete instance.** Prototype covers `M = 1`
+Status updated post-prototype.
+
+1. **Splittings for `InversePower{N ≠ 1}` and `RationalDecay`.** Still
+   open. Hardy γ isn't directly reusable for these. A generic splitting
+   design for these families is the highest-priority "extends what the
+   prototype can compute" item — without it MSM only runs on Coulomb,
+   so all real-system accuracy validation has to go through Ewald.
+
+2. **Hyperparameter sweep on a realistic system.** Discussed in detail
+   but not done. The goal: pick a water-like neutral box (or
+   `AtomsBuilder.bulk` ionic crystal) of ~500–2000 charges, compare MSM
+   forces to Ewald, and Pareto-plot accuracy vs cost over `(h, a)` with
+   `L` chosen so the top grid is 1×1×1. This is the prerequisite for
+   answering "is the prototype fast enough?" for any concrete use case.
+
+3. **2D Ewald / slab geometry reference.** Mixed BC (periodic in `xy`,
+   open in `z`) — the paper's emphasis — still has no absolute reference.
+   Phase 7 falls back to invariance + self-consistency there.
+
+4. **`restrict!` regression on the `perf` branch.** Standalone
+   benchmark is ~21 % slower than `main` for reasons that are not type
+   instability and not `Vector{Any}` dispatch (both ruled out in
+   [`profile/3_restrict.jl`](profile/3_restrict.jl)). Subtler codegen
+   issue, awaiting Cthulhu / asm-diff investigation. Net effect on
+   `msm_energy` is positive (because grid-cutoff and anter/interpolate
+   dominate), so this is a follow-up rather than a blocker.
+
+5. **AtomsBase charge property name.** Still hard-coded to `:charge`;
+   generalise when needed.
+
+6. **Vector-charge concrete instance.** Prototype covers `M = 1`
    everywhere; a single trivial `M = 2` test (e.g. identity-times-Coulomb)
-   confirms the type plumbing without shipping a "real" vector kernel.
-   Extended later.
+   would confirm the type plumbing. Not done.
+
+7. **GPU port via `KernelAbstractions.jl`.** Code on `perf` is now
+   kernel-shaped (per-axis dispatch at codegen, no closures in hot
+   loops, allocation-free anter/interpolate). The port should be
+   mostly mechanical; `grid_cutoff!` is the obvious first target.
 
 ---
 
@@ -499,7 +568,7 @@ Steps:
 |-------|--------------------------------------------|--------|
 | 1     | Kernels, basis, splitting primitives       | 1 day  |
 | 2     | Naive reference (multi-kernel, mixed BC)   | ½ day  |
-| 2b    | Ewald reference in `test/refs/`            | ½ day  |
+| 2b    | Ewald reference (`src/reference/`)         | ½ day  |
 | 3     | Grid + anterp/interp (vector charges)      | 1 day  |
 | 4     | Restriction / prolongation                 | ½ day  |
 | 5     | Grid-cutoff convolution (matrix stencil)   | 1 day  |

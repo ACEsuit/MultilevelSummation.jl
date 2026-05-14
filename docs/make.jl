@@ -9,7 +9,9 @@ DocMeta.setdocmeta!(MultilevelSummation, :DocTestSetup,
 const REPO = Documenter.Remotes.GitHub("ACEsuit", "MultilevelSummation.jl")
 
 makedocs(;
-    modules  = [MultilevelSummation],
+    modules  = [MultilevelSummation,
+                MultilevelSummation.Reference,
+                MultilevelSummation.Tune],
     sitename = "MultilevelSummation.jl",
     authors  = "Christoph Ortner and contributors",
     repo     = REPO,
@@ -31,6 +33,7 @@ makedocs(;
             "Operators"    => "api/operators.md",
             "Reference"    => "api/reference.md",
             "Calculator"   => "api/calculator.md",
+            "Tune"         => "api/tune.md",
         ],
         "Internals notes" => "internals.md",
     ],
