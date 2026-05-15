@@ -23,10 +23,11 @@ best  = Tune.recommend(rows; max_rel_err = 1e-3)
 front = Tune.pareto_front(rows)
 ```
 
-The shipped `tuning/` scripts (currently `tune_NaCl.jl`, with
-`tune_H2O.jl` planned) are thin callers of the same API on
-realistic test systems; their CSV output is the canonical way to
-explore accuracy-vs-cost trade-offs on a given problem class.
+The shipped `tuning/` scripts (`tune_NaCl.jl` for a perturbed
+rock-salt supercell, `tune_H2O.jl` for a TIP3P-like water box) are
+thin callers of the same API on realistic test systems; their CSV
+output is the canonical way to explore accuracy-vs-cost trade-offs
+on a given problem class.
 
 ## Result type
 

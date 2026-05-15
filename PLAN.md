@@ -141,7 +141,10 @@ MultilevelSummation.jl/
 │   │   ├── ewald.jl                # naive 3D Ewald reference (Coulomb, periodic)
 │   │   └── naive.jl                # naive O(N²) direct sum (any kernel, any BC)
 │   └── tune/
-│       └── Tune.jl                 # hyperparameter sweep + system builders
+│       ├── Tune.jl                 # submodule wrapper + exports + includes
+│       ├── sweep.jl                # SweepResult, sweep, pareto_front, recommend, run_system_sweep, write_csv
+│       ├── summary.jl              # print_pareto_per_N / print_recommendations / print_scaling / print_summary
+│       └── systems.jl              # build_nacl, build_h2o, TIP3P + Poisson-disk helpers
 ├── test/
 │   ├── runtests.jl
 │   ├── test_kernels.jl             # telescoping identity per (kernel, splitting)

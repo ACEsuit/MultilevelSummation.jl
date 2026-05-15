@@ -149,10 +149,11 @@ each MSM evaluation is
 ```
 
 The first term is the short-range direct sum, the second the per-level
-grid-cutoff convolution, the third the top-level direct sum. The
-prototype is not performance-tuned; the implementation is "kernel-shaped"
-so that the per-level loops can be ported to `KernelAbstractions.jl`
-later.
+grid-cutoff convolution, the third the top-level direct sum. The hot
+operators are multi-threaded via OhMyThreads; the implementation is
+"kernel-shaped" (no method dispatch inside inner loops, allocations at
+the call site) so the per-level loops also remain a natural fit for
+the planned `KernelAbstractions.jl` port.
 
 ## Approximation accuracy
 

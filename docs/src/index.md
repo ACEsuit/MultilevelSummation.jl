@@ -5,10 +5,12 @@ Hardy, Wu, Phillips, Stone, Skeel & Schulten
 (*J. Chem. Theory Comput.* **11**, 766–779, 2015) for fast evaluation of
 long-range pair interactions.
 
-This is currently an **early prototype**:
+Highly experimental — API not yet stable. Current status:
 
-- Pure Julia, CPU only (kernel-shaped for a later `KernelAbstractions.jl`
-  port).
+- Pure Julia, multi-threaded CPU via
+  [OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl); GPU
+  port via `KernelAbstractions.jl` is planned. For best performance
+  launch Julia with `julia -t auto`.
 - Dimensions ``d \in \{1,2,3\}``.
 - Per-axis boundary conditions: `:open` / `:periodic` (mixed BC works).
 - Pluggable kernels (`InversePower{N}`, `RationalDecay{N}`),
@@ -16,8 +18,11 @@ This is currently an **early prototype**:
   bases (`CubicC1`).
 - AtomsBase + AtomsCalculators interface.
 
-The full implementation plan, including known limitations and the open
-design questions, is in [`PLAN.md`](https://github.com/) at the repo root.
+The design contract — repository layout, API surface, duck-typed
+interfaces — lives in
+[`PLAN.md`](https://github.com/ACEsuit/MultilevelSummation.jl/blob/main/PLAN.md).
+The live task list with priorities is in
+[`PRIORITIES.md`](https://github.com/ACEsuit/MultilevelSummation.jl/blob/main/PRIORITIES.md).
 
 ## Installation
 
