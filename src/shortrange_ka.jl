@@ -135,7 +135,7 @@ function _short_range_pair_ka(positions::AbstractVector{SVector{D,T}},
     kernel = _short_range_ka_kernel!(backend)
     kernel(U_per_atom, F_short, charges, clist, splitting, Val(D);
            ndrange = N)
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
 
     # Each ordered (i,j) pair is visited twice in the per-atom sum.
     U_short = T(1//2) * sum(U_per_atom)

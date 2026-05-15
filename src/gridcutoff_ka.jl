@@ -47,6 +47,6 @@ function grid_cutoff_ka!(e::AbstractArray{T,D},
     fill!(e, zero(T))
     kernel = _convolve_ka_kernel!(backend)
     kernel(e, q, stencil, smax, grid, Val(D); ndrange = size(e))
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return e
 end

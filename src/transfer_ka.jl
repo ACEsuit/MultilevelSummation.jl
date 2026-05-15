@@ -56,7 +56,7 @@ function restrict_ka!(dst::AbstractArray{T,D},
     kernel = _restrict_ka_kernel!(backend)
     kernel(dst, src, dst_grid, src_grid, basis, half_w, Val(D);
            ndrange = size(dst))
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return dst
 end
 
@@ -111,6 +111,6 @@ function prolong_ka!(dst::AbstractArray{T,D},
     kernel = _prolong_ka_kernel!(backend)
     kernel(dst, src, dst_grid, src_grid, basis, Val(D), Val(S);
            ndrange = size(dst))
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return dst
 end

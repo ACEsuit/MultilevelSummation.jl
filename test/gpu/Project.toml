@@ -1,0 +1,16 @@
+# Standalone environment for the CPU↔GPU equivalence check on real
+# hardware. NOT part of the standard `]test` target.
+#
+# Usage:
+#   julia --project=test/gpu -e 'using Pkg; Pkg.develop(path=".."); Pkg.add("CUDA")'
+#   julia --project=test/gpu test/gpu/runtests.jl
+#
+# Replace `CUDA` with whichever framework your hardware supports:
+# `AMDGPU` (ROCm), `Metal` (Apple Silicon), `oneAPI` (Intel).
+
+[deps]
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+MultilevelSummation = "8c6e5870-99c4-4685-beb5-7acb5afddbe8"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

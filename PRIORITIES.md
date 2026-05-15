@@ -25,7 +25,26 @@ goes through
 GPU-friendly `SortedCellList` + a per-atom `@kernel`. `MSMCalculator`
 is untouched — no `backend` field, no signature change. KA-on-CPU
 correctness is exercised against the OhMyThreads path in
-`test/test_ka_*.jl`. GPU-backend CI is the only follow-up.
+`test/test_ka_*.jl`.
+
+**Follow-ups still open:**
+
+- *GPU-backend CI runner.* The standalone equivalence-check script at
+  [`test/gpu/runtests.jl`](test/gpu/runtests.jl) auto-detects whichever
+  of `CUDA` / `AMDGPU` / `Metal` / `oneAPI` is installed in
+  `test/gpu/`, compares CPU vs kwarg-driven and array-type-dispatched
+  KA results on NaCl / H2O fixtures, and exits cleanly with a help
+  message if none is found. Wiring a self-hosted GitHub Actions runner
+  with a GPU into the CI matrix is the missing piece.
+- *AbstractGPUArray-dispatch coverage in standard `]test`.* The
+  natural emulator for this is
+  [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl), but the full
+  KA path currently breaks on `JLBackend` upstream: NL.jl's
+  `_build_sorted_celllist` ends up in
+  AcceleratedKernels.jl's `__forindices_global!`, which has no
+  `JLBackend` method, and KA / JLArrays itself doesn't define
+  `synchronize(::JLBackend)`. Revisit once those gaps land upstream
+  (or once `POCLBackend` is a viable substitute).
 
 ### T2. Splittings for `InversePower{N ≠ 1}` and `RationalDecay`
 

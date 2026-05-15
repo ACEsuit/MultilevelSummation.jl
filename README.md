@@ -35,5 +35,25 @@ GPU-friendly cell list. Pass `AbstractGPUArray` positions / charges
 KA.CPU()` to validate the KA path on plain `Array`s without GPU
 hardware.
 
+### CPU ↔ GPU equivalence test
+
+The standalone script at [`test/gpu/runtests.jl`](test/gpu/runtests.jl)
+runs an equivalence check (CPU result vs both the kwarg-driven and the
+array-type-dispatched KA paths) on small NaCl and H2O fixtures. It is
+deliberately kept out of the standard `]test` target so the heavy
+binary deps of CUDA / AMDGPU / Metal / oneAPI are not pulled into
+normal CI installs. To run it, add whichever framework matches your
+hardware to `test/gpu/`:
+
+```julia-repl
+julia> using Pkg
+julia> Pkg.develop(path=".")                      # cd'd into test/gpu first
+julia> Pkg.add("CUDA")                            # or AMDGPU / Metal / oneAPI
+```
+
+Then `julia --project=test/gpu test/gpu/runtests.jl`. The script
+auto-detects the installed framework and exits cleanly with a help
+message if none is found.
+
 See the [documentation](https://ACEsuit.github.io/MultilevelSummation.jl/dev/) 
 for details, examples, and the implementation plan.

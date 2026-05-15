@@ -39,7 +39,7 @@ function top_level_ka!(e::AbstractArray{T,D},
     fill!(e, zero(T))
     kernel = _top_level_ka_kernel!(backend)
     kernel(e, q, grid, splitting, Val(D); ndrange = size(e))
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return e
 end
 

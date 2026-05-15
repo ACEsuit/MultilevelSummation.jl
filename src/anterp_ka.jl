@@ -82,7 +82,7 @@ function interpolate_ka!(potentials::AbstractVector{T},
     kernel = _interpolate_ka_kernel!(backend)
     kernel(potentials, positions, grid_values, grid, basis, Val(D), Val(S);
            ndrange = N)
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return potentials
 end
 
@@ -156,7 +156,7 @@ function interpolate_grad_ka!(grads::AbstractVector{SVector{D,T}},
     kernel = _interpolate_grad_ka_kernel!(backend)
     kernel(grads, positions, grid_values, grid, basis, inv_h, Val(D), Val(S);
            ndrange = N)
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return grads
 end
 
@@ -227,6 +227,6 @@ function anterpolate_ka!(grid_values::AbstractArray{T,D},
     kernel = _anterpolate_ka_kernel!(backend)
     kernel(grid_values, positions, charges, grid, basis, Val(D), Val(S);
            ndrange = N)
-    KernelAbstractions.synchronize(backend)
+    _ka_synchronize(backend)
     return grid_values
 end

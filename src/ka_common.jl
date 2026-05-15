@@ -46,6 +46,25 @@ read closer to the existing `zeros(T, ...)` idiom.
 @inline _ka_zeros(backend::Backend, ::Type{T}, dims::Integer...) where {T} =
     KernelAbstractions.zeros(backend, T, dims...)
 
+"""
+    _ka_synchronize(backend) -> nothing
+
+Call `KernelAbstractions.synchronize(backend)` if a method exists,
+otherwise no-op. Some backends (notably `JLArrays`'s `JLBackend`) don't
+define `synchronize` because their kernel launches are already
+synchronous — calling KA's generic `synchronize` on them would
+`MethodError`. Catching that specific error keeps real-GPU backends
+(CUDA, ROCm, …) unaffected.
+"""
+@inline function _ka_synchronize(backend)
+    try
+        KernelAbstractions.synchronize(backend)
+    catch e
+        e isa MethodError || rethrow()
+    end
+    return nothing
+end
+
 # ----- KA-path entry points: declared here, implemented in src/*_ka.jl ------
 #
 # Until the rest of the `*_ka.jl` files are wired up, calling these is an
