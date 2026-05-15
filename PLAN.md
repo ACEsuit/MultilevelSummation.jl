@@ -14,14 +14,19 @@ is being worked on next*, see [`PRIORITIES.md`](PRIORITIES.md).
 ## Status
 
 The CPU implementation is functionally complete and multi-threaded
-(via OhMyThreads), with 13206 tests passing on `julia -t 1` and
-`julia -t 4`. End-to-end MSM (`msm_energy`, `msm_energy_forces`),
+(via OhMyThreads). End-to-end MSM (`msm_energy`, `msm_energy_forces`),
 the AtomsBase / AtomsCalculators wrapper, the Reference submodule
-(naive direct sum + 3D Ewald), and the Tune submodule
-(hyperparameter sweeps with realistic NaCl/H2O builders) are all
-shipped. The current "highly experimental" caveats — no GPU
-backend, only the Coulomb splitting, no ChainRules integration —
-are tracked as Tier-1/Tier-2 tasks in [`PRIORITIES.md`](PRIORITIES.md).
+(naive direct sum + 3D Ewald), and the Tune submodule (hyperparameter
+sweeps with realistic NaCl/H2O builders) are all shipped. A parallel
+implementation path via
+[KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl)
+covers every hot operator and the short-range pair sum (the latter
+through [NeighbourLists.jl](https://github.com/JuliaMolSim/NeighbourLists.jl)'s
+GPU-friendly cell list); it is selected per call from the input array
+type or via a `backend` kwarg on `msm_energy` / `msm_energy_forces`.
+The remaining "highly experimental" caveats — only the Coulomb
+splitting, no ChainRules integration — are tracked as Tier-2 tasks
+in [`PRIORITIES.md`](PRIORITIES.md).
 
 ---
 
@@ -70,8 +75,11 @@ them.
 ## 1. Scope
 
 **In scope:**
-- Pure Julia, multi-threaded CPU. GPU port via `KernelAbstractions.jl`
-  is a planned migration (see [`PRIORITIES.md`](PRIORITIES.md) T1).
+- Pure Julia, multi-threaded CPU (default path) plus a
+  KernelAbstractions-based parallel path that runs on CPU or any KA
+  GPU backend (CUDA, ROCm, Metal, oneAPI). The KA path is selected
+  per call from the input array type or via a `backend` kwarg; no
+  change to `MSMCalculator`.
 - Dimensions `d ∈ {1, 2, 3}` from day one; all operators dimension-generic.
 - **Floating-point precision is a free type parameter** `T <: AbstractFloat`
   threaded through positions, charges, cutoffs, grid spacings, and all

@@ -10,21 +10,56 @@ source itself.
 
 ## Tier 1 — High priority (unblocks expansion of the package)
 
-### T1. KernelAbstractions (KA) migration
+### T1. KernelAbstractions (KA) parallel path — **DONE**
 
-Rewrite each hot operator as a KA `@kernel`, default backend `CPU()`,
-optional GPU backends. Replaces the OhMyThreads layer; opens the GPU
-port that the README still flags as missing.
+Landed as an *alternative* interface rather than a migration: the
+OhMyThreads CPU path is unchanged; a KA path lives alongside in
+`src/*_ka.jl`. It is selected per call from the input array type
+(`AbstractGPUArray`) or via a `backend = <KA backend>` kwarg on
+`msm_energy` / `msm_energy_forces`. Every hot operator has a KA
+counterpart (`anterpolate_ka!`, `interpolate_ka!`,
+`interpolate_grad_ka!`, `restrict_ka!`, `prolong_ka!`,
+`grid_cutoff_ka!`, `top_level_ka!`), and the short-range pair sum
+goes through
+[NeighbourLists.jl](https://github.com/JuliaMolSim/NeighbourLists.jl)'s
+GPU-friendly `SortedCellList` + a per-atom `@kernel`. `MSMCalculator`
+is untouched — no `backend` field, no signature change. KA-on-CPU
+correctness is exercised against the OhMyThreads path in
+`test/test_ka_*.jl`.
 
-- **Files**: every operator (`_convolve!`, `restrict!`, `prolong!`,
-  `anterpolate!`, `interpolate!`, `interpolate_grad!`, `top_level!`),
-  plus `MSMCalculator` for the optional `backend` field.
-- **Effort**: 3–5 days for the CPU path; another 1–2 days for GPU CI
-  if a runner is available.
-- **Why high**: gates T4 (bench revisit); gates GPU support promised
-  in the README; removes the largest "highly experimental" caveat.
-  Basic structure: non-generated outer wrapper + `@kernel` inner body,
-  `Val{(Per, Sz)}` for per-axis specialisations.
+**Follow-ups still open:**
+
+- *Short-range pair-count discrepancy in clustered systems.* On H₂O
+  with the TIP3P builder, the KA short-range loop (NL.jl
+  `SortedCellList` + `for_each_neighbour`) reports 66 ordered pairs
+  where the legacy O(N²) loop reports 74 — a ~10 % miss concentrated
+  on intramolecular OH partners near the cutoff. The corresponding
+  per-atom forces disagree by up to ~50 % on the affected atoms; the
+  total energy disagrees by ~1 %. The miss is independent of the GPU
+  backend (CPU-KA and GPU-KA agree bit-exactly), so this is a
+  cell-list / kernel-side issue rather than a GPU port issue. Already
+  marked `@test_broken` in `test/gpu/equivalence.jl`. Plausible root
+  causes: strict `<` vs `≤` on the cutoff comparison, or a `for_each_neighbour`
+  bug at cell-edge atom placements.
+- *GPU-backend CI runner.* The standalone equivalence-check script at
+  [`test/gpu/runtests.jl`](test/gpu/runtests.jl) auto-detects whichever
+  of `CUDA` / `AMDGPU` / `Metal` / `oneAPI` is installed in
+  `test/gpu/`, runs three-way comparison (legacy CPU, KA-on-CPU,
+  KA-on-GPU) on NaCl / H2O fixtures, and exits cleanly with a help
+  message if none is found. Wiring a self-hosted GitHub Actions runner
+  with a GPU into the CI matrix is the missing piece. *Verified
+  locally on NVIDIA A100 40GB with CUDA.jl: 10/11 tests pass,
+  1 documented `@test_broken` (the H2O force-vs-legacy comparison
+  noted above).*
+- *AbstractGPUArray-dispatch coverage in standard `]test`.* The
+  natural emulator for this is
+  [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl), but the full
+  KA path currently breaks on `JLBackend` upstream: NL.jl's
+  `_build_sorted_celllist` ends up in
+  AcceleratedKernels.jl's `__forindices_global!`, which has no
+  `JLBackend` method, and KA / JLArrays itself doesn't define
+  `synchronize(::JLBackend)`. Revisit once those gaps land upstream
+  (or once `POCLBackend` is a viable substitute).
 
 ### T2. Splittings for `InversePower{N ≠ 1}` and `RationalDecay`
 
@@ -65,7 +100,7 @@ kernel families already present in the package. Today,
 
 ### T4. Issue [#6](https://github.com/ACEsuit/MultilevelSummation.jl/issues/6) — Revisit benchmark suite
 
-DEFERRED until T1 lands (issue body says so explicitly).
+T1 has landed, so this is now actionable.
 
 Replace the small CI-tier fixtures (N=64 NaCl, N=51 H2O) with
 informative sizes (n_super=4, box=16); add a quick/full tier toggle;
@@ -154,38 +189,24 @@ Tile the destination loop in `_convolve!` to fit L1 cache + halo.
 ### T11. README + PLAN.md status sweep
 
 Refresh the "highly experimental" caveats in
-[`README.md`](README.md) and any stale status text once T1 / T6
-land. Specifically:
+[`README.md`](README.md) and any stale status text once T6 lands.
+Specifically:
 
-- "missing GPU port via `KernelAbstractions.jl`" — remove when T1
-  ships.
 - "no ChainRules integration yet" — remove when T6 ships.
 
+The "missing GPU port" caveat is already gone (T1 shipped).
+
 - **Effort**: 30 minutes.
-- **Why low**: doc hygiene. Bundle into whichever Tier-1/Tier-2
-  PR happens to touch related sections.
+- **Why low**: doc hygiene. Bundle into whichever Tier-2 PR happens
+  to touch related sections.
 
 ## Recommended sequencing
 
-1. **T3** — quick, isolated, immediate readability win. Land first.
-2. **T11** in passing — fits naturally on the heels of any
-   restructuring PR.
-3. **T1 and T2 in parallel.** They don't overlap: T1 touches
-   operators (`_convolve!`, anter/interpolate, restrict/prolong,
-   top_level); T2 touches kernels + splittings (new files in
-   `src/splittings/` and a touch to the calculator constructor's
-   compatibility check). Two independent PR streams, merged when
-   each is ready.
-4. **T4** once T1 lands.
-5. **T5 / T6 / T7** — pick based on the next concrete consumer
+1. **T2** — splittings for non-Coulomb kernels. Unblocks the
+   `InversePower{N≠1}` and `RationalDecay` families that are already
+   declared in the API. No collision with T1 (now done): the KA path
+   doesn't touch the constructor.
+2. **T4** — bench revisit, now that T1 is in.
+3. **T5 / T6 / T7** — pick based on the next concrete consumer
    (slab-geometry user, AD user, multi-charge-component user).
-6. **T8 / T9 / T10** — opportunistic; T8 likely superseded by T1.
-
-## Parallelism caveat
-
-If T1 and T2 are pursued by different contributors, watch one
-specific merge surface: `MSMCalculator` construction validates
-`(kernel, splitting)` compatibility. T2 adds new
-`(InversePower{N≠1}, splitting)` pairs; T1 adds a `backend` field.
-Both touch the constructor signature. Coordinate the constructor
-diff to avoid a painful three-way merge.
+4. **T8 / T9 / T10** — opportunistic; T8 is largely subsumed by T1.
