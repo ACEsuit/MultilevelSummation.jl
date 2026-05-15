@@ -50,6 +50,34 @@ function ewald_energy_forces(positions::Vector{SVector{3,T}},
     return Ur + Uk + Us, Fr .+ Fk
 end
 
+"""
+    ewald_reference(positions, charges, cell; tol = 1e-9) -> Real
+
+Auto-tuned convenience wrapper: pick `(α, R_cut, k_cut)` from the cell
+extent and the prescribed truncation tolerance `tol`, then call
+[`ewald_energy`](@ref).
+
+Selection rule:
+
+    R_cut = min(box/2 − 0.5, 14)
+    α     = √(−log tol) / R_cut
+    k_cut = 2 α √(−log tol)
+
+Returns the total Ewald energy. Used by `Tune.run_system_sweep` as the
+absolute reference against which MSM sweep results are compared.
+"""
+function ewald_reference(positions::Vector{SVector{3,T}},
+                         charges::Vector{T},
+                         cell::SMatrix{3,3,T};
+                         tol::Real = 1e-9) where {T<:AbstractFloat}
+    box   = cell[1, 1]                       # assumes cubic
+    αR    = sqrt(-log(tol))                  # ≈ 4.55 for tol = 1e-9
+    R_cut = min(box / 2 - T(0.5), T(14))
+    α     = αR / R_cut
+    k_cut = 2 * α * αR
+    return ewald_energy(positions, charges, cell; α = α, R_cut = R_cut, k_cut = k_cut)
+end
+
 # Real-space sum -----------------------------------------------------------
 
 function _ewald_real_energy(positions, charges, cell::SMatrix{3,3,T}, α::T, R_cut::T) where T

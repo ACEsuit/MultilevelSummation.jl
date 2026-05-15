@@ -22,7 +22,7 @@ using ChunkSplitters: chunks
 using ..MultilevelSummation: grad   # for naive_energy_forces kernel gradient
 using ..MultilevelSummation: _assert_orthorhombic, _image_ranges, _shift
 
-export ewald_energy, ewald_energy_forces
+export ewald_energy, ewald_energy_forces, ewald_reference
 export naive_energy, naive_energy_forces
 
 include("ewald.jl")
