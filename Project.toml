@@ -1,6 +1,6 @@
 name = "MultilevelSummation"
 uuid = "8c6e5870-99c4-4685-beb5-7acb5afddbe8"
-version = "0.0.1-DEV"
+version = "0.1.0"
 authors = ["Christoph Ortner"]
 
 [deps]
@@ -26,7 +26,11 @@ SpecialFunctions = "2"
 StableRNGs = "1.0.4"
 StaticArrays = "1.9.18"
 Unitful = "1.28.0"
-julia = "1.10"
+julia = "1.12"
+LinearAlgebra = "1"
+Printf = "1"
+Random = "1" 
+
 
 [extras]
 AtomsBuilder = "f5cc8831-eeb7-4288-8d9f-d6c1ddb77004"
