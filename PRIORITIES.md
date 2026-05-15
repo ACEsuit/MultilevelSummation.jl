@@ -29,13 +29,28 @@ correctness is exercised against the OhMyThreads path in
 
 **Follow-ups still open:**
 
+- *Short-range pair-count discrepancy in clustered systems.* On H₂O
+  with the TIP3P builder, the KA short-range loop (NL.jl
+  `SortedCellList` + `for_each_neighbour`) reports 66 ordered pairs
+  where the legacy O(N²) loop reports 74 — a ~10 % miss concentrated
+  on intramolecular OH partners near the cutoff. The corresponding
+  per-atom forces disagree by up to ~50 % on the affected atoms; the
+  total energy disagrees by ~1 %. The miss is independent of the GPU
+  backend (CPU-KA and GPU-KA agree bit-exactly), so this is a
+  cell-list / kernel-side issue rather than a GPU port issue. Already
+  marked `@test_broken` in `test/gpu/equivalence.jl`. Plausible root
+  causes: strict `<` vs `≤` on the cutoff comparison, or a `for_each_neighbour`
+  bug at cell-edge atom placements.
 - *GPU-backend CI runner.* The standalone equivalence-check script at
   [`test/gpu/runtests.jl`](test/gpu/runtests.jl) auto-detects whichever
   of `CUDA` / `AMDGPU` / `Metal` / `oneAPI` is installed in
-  `test/gpu/`, compares CPU vs kwarg-driven and array-type-dispatched
-  KA results on NaCl / H2O fixtures, and exits cleanly with a help
+  `test/gpu/`, runs three-way comparison (legacy CPU, KA-on-CPU,
+  KA-on-GPU) on NaCl / H2O fixtures, and exits cleanly with a help
   message if none is found. Wiring a self-hosted GitHub Actions runner
-  with a GPU into the CI matrix is the missing piece.
+  with a GPU into the CI matrix is the missing piece. *Verified
+  locally on NVIDIA A100 40GB with CUDA.jl: 10/11 tests pass,
+  1 documented `@test_broken` (the H2O force-vs-legacy comparison
+  noted above).*
 - *AbstractGPUArray-dispatch coverage in standard `]test`.* The
   natural emulator for this is
   [JLArrays.jl](https://github.com/JuliaGPU/JLArrays.jl), but the full

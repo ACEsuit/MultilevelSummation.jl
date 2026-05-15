@@ -14,7 +14,36 @@
 # correct displacement for the splitting evaluation.
 
 using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, Backend
-using NeighbourLists: neighbour_list, for_each_neighbour
+using NeighbourLists: neighbour_list, for_each_neighbour, SortedCellList
+using Adapt: Adapt
+
+# --- Adapt rule for NL.jl's SortedCellList -------------------------------
+#
+# NL.jl ships no `Adapt.adapt_structure` for `SortedCellList`, which
+# means CUDA / ROCm / Metal kernel launches can't recursively adapt the
+# CuArray (etc.) fields to their device-side counterparts
+# (`CuDeviceArray`, …). Without this, passing a `SortedCellList` as a
+# kernel argument fails with "non-bitstype argument" at GPU compile
+# time. The rule below makes the struct fully adaptable.
+#
+# Type piracy disclaimer: we extend `Adapt.adapt_structure` for an
+# external type. Acceptable here because there is no upstream definition
+# to conflict with and the semantics are unambiguous. Track the
+# upstream PR / issue request in PRIORITIES.md.
+@inline Adapt.adapt_structure(to, clist::SortedCellList) =
+    SortedCellList(
+        Adapt.adapt(to, clist.X),
+        Adapt.adapt(to, clist.X_orig),
+        Adapt.adapt(to, clist.perm),
+        Adapt.adapt(to, clist.cell_id),
+        Adapt.adapt(to, clist.cell_offsets),
+        clist.cell,
+        clist.inv_cell,
+        clist.pbc,
+        clist.cutoff,
+        clist.ncells,
+        clist.ncells_total,
+    )
 
 # --- 3D-padding adapters --------------------------------------------------
 
