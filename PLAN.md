@@ -1,60 +1,27 @@
-# MultilevelSummation.jl — Prototype Implementation Plan (rev. 6)
+# MultilevelSummation.jl — design contract
 
-A Julia **package** prototype of the **Multilevel Summation Method (MSM)**
-following Hardy, Wu, Phillips, Stone, Skeel, Schulten
+A Julia **package** implementation of the **Multilevel Summation Method
+(MSM)** following Hardy, Wu, Phillips, Stone, Skeel, Schulten
 (*J. Chem. Theory Comput.* 2015, 11, 766–779), generalised to arbitrary
 translation-invariant pair kernels with possibly vector-valued charges
 and matrix-valued kernels.
 
-Goal: a clean, testable CPU reference that grows into a performant
-CPU+GPU implementation via `KernelAbstractions.jl`, exposed as an
-`AtomsCalculators.AbstractCalculator`, and ready to register as a Julia
-package once correctness is established.
+This document is the **architectural reference** — the method summary,
+the scope and out-of-scope decisions, the repository layout, and the
+duck-typed interface contracts that user code can rely on. For *what
+is being worked on next*, see [`PRIORITIES.md`](PRIORITIES.md).
 
----
+## Status
 
-## Status (current)
-
-**The CPU prototype is functionally complete.** All eight phases below are
-implemented, with **3686 unit tests passing** on `perf`.
-
-What's been built:
-- **Math primitives** (`InversePower{N}`, `Coulomb` alias, `RationalDecay{N}`,
-  `CubicC1` basis, `HardyC2Cubic` splitting for Coulomb).
-- **Naive O(N²) reference** for arbitrary translation-invariant kernels and
-  arbitrary per-axis BC.
-- **`MultilevelSummation.Reference` submodule** — naive 3D Ewald reference
-  for periodic Coulomb, self-validated via α-invariance and FD gradient.
-  Available as part of the package; no `include()` of test files needed.
-- **Grid hierarchy + transfer / convolution operators** (`anterpolate!`,
-  `interpolate!`, `interpolate_grad!`, `restrict!`, `prolong!`,
-  `grid_cutoff!`, `top_level!`, `apply_neutralising_background!`).
-- **End-to-end MSM** (`msm_energy`, `msm_energy_forces`) with the
-  `MSMCalculator{T,S,B}` config; `AtomsCalculators` wrapper for AtomsBase
-  systems with unit-stripping.
-- **`MultilevelSummation.Tune` submodule** — programmatic hyperparameter
-  sweep API (`sweep`, `pareto_front`, `recommend`, `ewald_reference`).
-
-What's been verified:
-- Convergence in `a` and `h` matches the paper's `O(h^p / a^{p+1})` scaling.
-- FD gradient check for periodic MSM matches the analytic forces to ~1e-10.
-- Lattice-translation invariance and translation-invariance for open systems.
-- Periodic Coulomb MSM tracks the Ewald reference to small `a`-dependent
-  thresholds.
-
-Repository layout: `src/` for shipped code (with `reference/` and `tune/`
-subfolders for the public submodules), `test/` for tests, `docs/` with a
-built Documenter site, `benchmark/` with a PkgBenchmark suite (a
-`wrap_mode` group covers pow2-vs-non-pow2 periodic comparison), `profile/`
-with three interactive profiling scripts (`1.jl` open-BC, `2.jl` periodic,
-`3_restrict.jl` regression diagnostic), `tuning/` with realistic-system
-hyperparameter sweep scripts (`tune_NaCl.jl` shipped, `tune_H2O.jl`
-planned). CI on `.github/workflows/CI.yml` and docs on `Documenter.yml`.
-
-**Performance status.** Five rounds of work on the `perf` branch produced
-roughly **3× speedup** on `msm_energy` in 3D vs the original prototype
-(see [`PERF_NOTES.md`](PERF_NOTES.md) for the full record). Further perf
-work is *paused* in favour of the next-steps roadmap below.
+The CPU implementation is functionally complete and multi-threaded
+(via OhMyThreads), with 13206 tests passing on `julia -t 1` and
+`julia -t 4`. End-to-end MSM (`msm_energy`, `msm_energy_forces`),
+the AtomsBase / AtomsCalculators wrapper, the Reference submodule
+(naive direct sum + 3D Ewald), and the Tune submodule
+(hyperparameter sweeps with realistic NaCl/H2O builders) are all
+shipped. The current "highly experimental" caveats — no GPU
+backend, only the Coulomb splitting, no ChainRules integration —
+are tracked as Tier-1/Tier-2 tasks in [`PRIORITIES.md`](PRIORITIES.md).
 
 ---
 
@@ -100,14 +67,15 @@ them.
 
 ---
 
-## 1. Scope of the first prototype
+## 1. Scope
 
-**In scope (Phase A — CPU prototype):**
-- Pure Julia, CPU only, correctness over speed.
+**In scope:**
+- Pure Julia, multi-threaded CPU. GPU port via `KernelAbstractions.jl`
+  is a planned migration (see [`PRIORITIES.md`](PRIORITIES.md) T1).
 - Dimensions `d ∈ {1, 2, 3}` from day one; all operators dimension-generic.
 - **Floating-point precision is a free type parameter** `T <: AbstractFloat`
   threaded through positions, charges, cutoffs, grid spacings, and all
-  outputs. Default `Float64`; verify a `Float32` run as part of CI.
+  outputs. Default `Float64`; verified for `Float32` in CI.
 - **Charge dimension `M`** is a free type parameter, statically known
   (`Q = SVector{M,T}`, kernel value `SMatrix{M,M,T}`). For `M = 1` we
   collapse to scalars (`T`, `T`) for zero overhead.
@@ -118,15 +86,14 @@ them.
   - `RationalDecay{N,T}` — `K(r) = 1/(1 + (|r|/r₀)^N)`, smooth at the
     origin, `r₀^{-N}` tail.
   No abstract supertype until shared dispatch emerges.
-- **Splitting**: pluggable, duck-typed. Only one concrete splitting
-  ships in the prototype — `HardyC2Cubic` matched to Coulomb
-  (`InversePower{1}`). Splittings for general `N` and for
-  `RationalDecay` are a separate design problem deferred until the
-  Coulomb path is end-to-end correct.
+- **Splitting**: pluggable, duck-typed. Currently one concrete
+  splitting ships — `HardyC2Cubic` matched to Coulomb
+  (`InversePower{1}`). Splittings for general `N ≠ 1` and for
+  `RationalDecay` are tracked as `PRIORITIES.md` T2.
 - **Pluggable neutralising-background** — user selects via the
   calculator's hyperparameters.
 - **Pluggable interpolation basis**; cubic `C¹` (paper §2.2) is the
-  default. *Note: revisit later.*
+  default.
 - Public API is an `AtomsCalculators.AbstractCalculator` consuming
   `AtomsBase.AbstractSystem`; internally `DecoratedParticles.jl`.
 - Units stripped at the AtomsBase boundary; **all arithmetic and all
@@ -134,13 +101,11 @@ them.
 - Unit tests at every layer against an `O(N²)` naive reference; test
   systems are small *random* (not hand-curated) configurations.
 
-**Out of scope for now (Phase B+):**
+**Out of scope:**
 - FFT-based top level.
-- GPU kernels via `KernelAbstractions.jl`. CPU code is written
-  "kernel-shaped" so the port is mechanical.
 - Multiple time stepping, integrators, NAMD interop.
 - Anisotropic translation-invariant kernels not expressible as
-  scalar-softened tensor templates (we won't preclude them in the API,
+  scalar-softened tensor templates (the API doesn't preclude them,
   but no concrete instance ships).
 
 ---
@@ -150,12 +115,14 @@ them.
 ```
 MultilevelSummation.jl/
 ├── Project.toml                    # MultilevelSummation.jl package
-├── PLAN.md                         # this file
+├── PLAN.md                         # this file — design contract
+├── PRIORITIES.md                   # live "what's next" task list
+├── README.md                       # short user-facing intro
 ├── src/
-│   ├── MultilevelSummation.jl                    # module, exports
+│   ├── MultilevelSummation.jl      # module, includes, exports
 │   ├── calculator.jl               # MSMCalculator + AtomsCalculators glue
-│   ├── api.jl                      # AtomsBase ↔ core: unit stripping, particle build
 │   ├── core.jl                     # low-level msm_energy / msm_energy_forces
+│   ├── cell_helpers.jl             # _assert_orthorhombic, _image_ranges, _shift
 │   ├── kernels/
 │   │   ├── inverse_power.jl        # K(r) = 1/|r|^N  (Coulomb is N=1)
 │   │   └── rational_decay.jl       # K(r) = 1/(1 + (|r|/r₀)^N)
@@ -163,31 +130,46 @@ MultilevelSummation.jl/
 │   │   └── hardy_c2cubic.jl        # Hardy γ for Coulomb (paper)
 │   ├── basis/
 │   │   └── cubic.jl                # paper's C¹ cubic Φ
-│   ├── naive.jl                    # O(N²) reference (open, periodic, mixed)
 │   ├── grid.jl                     # d-D grid with per-axis BC + indexing
 │   ├── anterp.jl                   # anterpolation / interpolation (eq. 7, 12)
 │   ├── transfer.jl                 # restriction / prolongation (eq. 8, 11)
 │   ├── gridcutoff.jl               # local stencil convolution (eq. 9)
-│   └── toplevel.jl                 # top-level direct sum (eq. 10)
-└── test/
-    ├── runtests.jl
-    ├── refs/
-    │   └── ewald.jl                # naive 3D Ewald reference (Coulomb)
-    ├── test_kernels.jl             # telescoping identity per (kernel, splitting)
-    ├── test_basis.jl
-    ├── test_naive.jl
-    ├── test_ewald.jl               # self-validate Ewald vs Madelung constants
-    ├── test_anterp.jl
-    ├── test_transfer.jl
-    ├── test_gridcutoff.jl
-    ├── test_toplevel.jl
-    ├── test_core.jl                # low-level end-to-end vs naive + Ewald
-    └── test_calculator.jl          # AtomsBase + AtomsCalculators path
+│   ├── toplevel.jl                 # top-level direct sum (eq. 10)
+│   ├── docstrings.jl               # generic-function docstring shells
+│   ├── reference/
+│   │   ├── Reference.jl            # submodule wrapper
+│   │   ├── ewald.jl                # naive 3D Ewald reference (Coulomb, periodic)
+│   │   └── naive.jl                # naive O(N²) direct sum (any kernel, any BC)
+│   └── tune/
+│       ├── Tune.jl                 # submodule wrapper + exports + includes
+│       ├── sweep.jl                # SweepResult, sweep, pareto_front, recommend, run_system_sweep, write_csv
+│       ├── summary.jl              # print_pareto_per_N / print_recommendations / print_scaling / print_summary
+│       └── systems.jl              # build_nacl, build_h2o, TIP3P + Poisson-disk helpers
+├── test/
+│   ├── runtests.jl
+│   ├── test_kernels.jl             # telescoping identity per (kernel, splitting)
+│   ├── test_basis.jl
+│   ├── test_splittings.jl
+│   ├── test_naive.jl               # tests against Reference.naive_*
+│   ├── test_ewald.jl               # self-validate Ewald vs Madelung constants
+│   ├── test_anterp.jl
+│   ├── test_transfer.jl
+│   ├── test_gridcutoff.jl
+│   ├── test_toplevel.jl
+│   ├── test_core.jl                # low-level end-to-end vs naive + Ewald
+│   ├── test_calculator.jl          # AtomsBase + AtomsCalculators path
+│   ├── test_systems.jl             # Tune.build_nacl / build_h2o invariants
+│   └── test_tune.jl                # Tune.sweep, pareto_front, recommend
+├── benchmark/                      # PkgBenchmark suite
+├── tuning/                         # tune_NaCl.jl, tune_H2O.jl, plotting.jl
+├── docs/                           # Documenter site
+└── .github/workflows/              # CI.yml (-t 1 + -t 4 matrix) + Documenter.yml
 ```
 
 Dependencies: `AtomsBase`, `AtomsCalculators`, `DecoratedParticles`,
-`StaticArrays`. Test only: `StableRNGs`, `AtomsBuilder`, `Unitful`,
-`Test` (stdlib).
+`StaticArrays`, `SpecialFunctions`, `Unitful`, `OhMyThreads`,
+`ChunkSplitters`, `Random`, `LinearAlgebra`, `Printf`. Test-only:
+`StableRNGs`, `AtomsBuilder`, `Unitful`, `Test`.
 
 ---
 
@@ -298,14 +280,13 @@ top_level_grad(s, r)                   ->  SVector{D, KV}
 requires_neutralising_background(s)    ->  Bool
 ```
 
-Provided initially:
+Provided:
 
 - `HardyC2Cubic{T}` — Hardy γ matched to `Coulomb` (= `InversePower{1}`),
   paper's `C²` cubic γ (just above eq. 13).
 
 Splittings for general `N ≠ 1` and for `RationalDecay` are an open
-design question, deferred until the Coulomb path is green end-to-end
-(see §7).
+design problem tracked as [`PRIORITIES.md`](PRIORITIES.md) T2.
 
 The `(kernel, splitting)` pair is validated at calculator construction;
 mismatched pairs throw early.
@@ -323,12 +304,9 @@ eval_phi_prime(B, ξ::T)  ->  T
 `d`-dimensional basis values are built per particle as tensor products
 of the 1-D `Φ` (small loop, no Kronecker allocations).
 
-Provided initially:
+Provided:
 
 - `CubicC1{T}` — paper's piecewise cubic, support `|ξ| ≤ 2`.
-
-*Note: revisit basis order (Hermite, quintic, septic) once the rest of
-the stack is green.*
 
 ### 4.4 `MSMCalculator` construction
 
@@ -341,240 +319,8 @@ Constructor responsibilities:
 
 ---
 
-## 5. Phase-by-phase build, with tests
+## What's next
 
-Each phase ends green before the next begins. **All tests use small
-random configurations** (typically `N = 5..50` particles) and compare
-against the naive `O(N²)` reference, except for kernel-level identities
-that don't need a configuration.
-
-### Phase 1 — Math primitives (≈ 1 day)
-
-**Build:** `InversePower{N,T}` (incl. `Coulomb` alias), `RationalDecay{N,T}`,
-`HardyC2Cubic` (for Coulomb only), `CubicC1`.
-
-**Tests:**
-- **Telescoping identity** (per kernel + splitting): random `r ∈ R^D`,
-  `K_0(r) + Σ K_l(r) + K_L(r) ≈ K(r)` to machine precision for `T =
-  Float64` and to `Float32` precision for `T = Float32`.
-- **Support of `K_0`:** `K_0(r) = 0` for `|r| ≥ a`.
-- **Continuity of γ:** finite-diff check across `R = 1`.
-- **Basis partition of unity:** random `x` in support interior.
-- **Basis polynomial reproduction:** cubic basis exactly reproduces
-  polynomials up to degree 3 (random coefficients).
-
-### Phase 2 — Naive reference (≈ ½ day)
-
-**Build:**
-- `naive_energy_forces(positions, charges, cell, periodic, kernel)` —
-  generic in `T`, `Q`, kernel, BC.
-  - `:open`: direct double sum.
-  - `:periodic` / mixed: minimum-image truncated-image sum to a large
-    `R_max`; accurate for fast-decaying kernels (`1/r⁶`) by construction.
-
-**Tests:**
-- **Random `N = 5` system, open BC, multiple kernels (`Coulomb`,
-  `InversePower{6}`, `RationalDecay{4}`), `d ∈ {1,2,3}`:** energy and
-  forces match a brute-force double sum implemented independently in
-  the test to machine precision — this tests *the naive itself*
-  against an independent naive.
-- **Random small system, periodic, fast-decaying kernels
-  (`InversePower{6}`, `RationalDecay{N}`):** truncated-image sum
-  converges geometrically as the truncation radius grows.
-- **FD gradient check on the naive forces** (small random system).
-
-### Phase 2b — Ewald reference for 3D periodic Coulomb (≈ ½ day)
-
-Originally test-only infrastructure under `test/refs/`. **Now lifted
-to `src/reference/Reference.jl` as the `MultilevelSummation.Reference`
-submodule**, since both the test suite and `MultilevelSummation.Tune`
-need it. Same code, public namespace.
-
-**Build:**
-- `ewald_energy_forces(positions, charges, cell; α, R_cut, k_cut)`:
-  the standard 3D Ewald decomposition (real-space erfc sum + reciprocal
-  Gaussian sum + self term). Naive `O(N²)` real-space and `O(N²·K)`
-  reciprocal; charge-neutral input required.
-- Limited to fully 3D-periodic, orthorhombic cells (sufficient for our
-  test needs).
-
-**Tests (self-validation, before it can be used as a reference):**
-- **Madelung constants:** energy per ion for NaCl-, CsCl-, ZnS-type
-  lattices reproduces literature values to ≥ 8 digits when
-  `(α, R_cut, k_cut)` are set conservatively.
-- **Parameter invariance:** sweeping `α` over a reasonable range (with
-  `R_cut, k_cut` scaled accordingly) leaves the energy invariant to
-  ≥ 10 digits — Ewald's defining property and a strong correctness
-  check.
-- **FD gradient check** on a small random neutral system.
-- **Consistency with `naive_energy_forces` for `1/r⁶`-only periodic
-  systems** — sanity that the periodic geometry handling matches.
-
-### Phase 3 — Grid + anterpolation / interpolation (≈ 1 day)
-
-**Build:** `Grid{D,T}` (per-axis BC, wrapping helpers), `anterpolate!`,
-`interpolate!` for vector charges.
-
-**Tests** (all on random configurations):
-- **Transpose property:** `⟨x, Anterp y⟩ = ⟨Interp x, y⟩` on random
-  vectors.
-- **Charge conservation:** total grid charge = total particle charge.
-- **Polynomial reproduction** of vector polynomial fields at random
-  particle sites (degree ≤ basis order).
-- **Scalar vs vector parity:** for `M = 1` vector charges and the same
-  data as scalars, outputs agree.
-
-### Phase 4 — Restriction / prolongation (≈ ½ day)
-
-**Build:** `restrict!`, `prolong!`, tensor-product, per-axis wrapping.
-
-**Tests** (random fields):
-- Transpose property between restriction and prolongation.
-- Polynomial reproduction.
-- Smooth-field round-trip preserves smooth modes within tolerance.
-
-### Phase 5 — Grid-cutoff convolution (≈ 1 day)
-
-**Build:** stencil precomputation per level (`SMatrix`-valued entries
-when `M > 1`); direct convolution with per-axis wrap/truncate.
-
-**Tests:**
-- Single non-zero grid charge ⇒ output equals stencil (random charge
-  value, random grid location).
-- Linearity on random fields.
-- **Random grid charges**: compare against an explicit eq. 9 double-loop
-  reference on small grids.
-
-### Phase 6 — Top level (≈ ½ day)
-
-**Build:** open-axis direct sum; periodic-axis collapse to one point;
-neutralising background applied when configured.
-
-**Tests** (random configurations):
-- Small fully-open system: brute-force `K_L` agrees with implementation.
-- Fully periodic Coulomb: top-level grid charge sums to zero.
-- Fully periodic `1/r⁶`: no background, top level matches direct sum.
-
-### Phase 7 — Low-level end-to-end (≈ 1 day)
-
-**Build:** `msm_energy`, `msm_energy_forces` wiring eq. 5 / eq. 13 on
-the raw-array core.
-
-Since the prototype only ships a Coulomb splitting, MSM end-to-end tests
-run on **Coulomb only**. The other kernels are exercised only through
-the naive reference in Phase 2.
-
-**Tests** (the headline ones, all random):
-- **Convergence sweep** in `h` and `a` on a fixed random `N = 10` open-BC
-  Coulomb system: error scales as `O(h^p / a^{p+1})` with `p = 3` for
-  cubic basis.
-- **Random `N = 20`**, `d ∈ {1,2,3}`, open BC, Coulomb: relative force
-  error vs naive below threshold (calibrated from the sweep).
-- **Fully 3D-periodic Coulomb** (neutral random system): relative force
-  and energy errors vs the **Ewald reference** below threshold.
-- **Mixed BC** (periodic in `xy`, open in `z`), Coulomb: no absolute
-  reference (2D Ewald deferred); tested via
-  - lattice-translation invariance along the periodic axes;
-  - FD gradient check matches returned forces;
-  - self-consistency under doubling of `h` and `a`.
-- **FD gradient check** on all configurations.
-- **Translation invariance** (open and lattice-periodic).
-- **`Float32` smoke test** — same suite at lower thresholds.
-
-### Phase 8 — AtomsCalculators wrapper (≈ ½ day)
-
-**Build:** `MSMCalculator`, AtomsCalculators methods, AtomsBase
-extraction, unit stripping.
-
-**Tests:**
-- `AtomsCalculators.potential_energy(sys, calc) ≈ msm_energy(calc, ...)`
-  on a small `AtomsBuilder` system (e.g. `bulk(...)` or a hand-built
-  water box) with hand-attached charges.
-- `AtomsCalculators.forces` and `forces!` agree with `msm_energy_forces`.
-- Unit-stripping round-trips: feeding the same configuration with
-  different consistent unit choices yields identical numerical results.
-- A unit *mismatch* (e.g. charge in `e` vs `C` without an explicit
-  scale) throws.
-
----
-
-## 6. GPU migration plan (Phase B)
-
-Two principles in the CPU code now so the port is small:
-
-1. **No closures over mutable state in inner loops.** Every kernel-shaped
-   routine takes plain arrays + scalars; allocations live outside.
-2. **One function per kernel.** `anterpolate!`, `restrict!`,
-   `gridcutoff!`, `prolong!`, `interpolate!`, `shortrange!` each are a
-   single loop nest with no method dispatch inside.
-
-Steps:
-1. Add `KernelAbstractions`. Rewrite each `*!` as `@kernel`; CPU backend
-   must reproduce results bit-for-bit on `Float64` and `Float32`.
-2. Run full low-level test suite under the KA-CPU backend (the
-   AtomsCalculator wrapper need not change).
-3. Add GPU CI path (CUDA / Metal) and re-run.
-4. *Only then* optimise: stencil tiling for `gridcutoff!`, gather-based
-   `anterpolate!`, coalesced `interpolate!`.
-
----
-
-## 7. Remaining open questions and follow-ups
-
-Status updated post-prototype.
-
-1. **Splittings for `InversePower{N ≠ 1}` and `RationalDecay`.** Still
-   open. Hardy γ isn't directly reusable for these. A generic splitting
-   design for these families is the highest-priority "extends what the
-   prototype can compute" item — without it MSM only runs on Coulomb,
-   so all real-system accuracy validation has to go through Ewald.
-
-2. **Hyperparameter sweep on a realistic system.** Discussed in detail
-   but not done. The goal: pick a water-like neutral box (or
-   `AtomsBuilder.bulk` ionic crystal) of ~500–2000 charges, compare MSM
-   forces to Ewald, and Pareto-plot accuracy vs cost over `(h, a)` with
-   `L` chosen so the top grid is 1×1×1. This is the prerequisite for
-   answering "is the prototype fast enough?" for any concrete use case.
-
-3. **2D Ewald / slab geometry reference.** Mixed BC (periodic in `xy`,
-   open in `z`) — the paper's emphasis — still has no absolute reference.
-   Phase 7 falls back to invariance + self-consistency there.
-
-4. **`restrict!` regression on the `perf` branch.** Standalone
-   benchmark is ~21 % slower than `main` for reasons that are not type
-   instability and not `Vector{Any}` dispatch (both ruled out in
-   [`profile/3_restrict.jl`](profile/3_restrict.jl)). Subtler codegen
-   issue, awaiting Cthulhu / asm-diff investigation. Net effect on
-   `msm_energy` is positive (because grid-cutoff and anter/interpolate
-   dominate), so this is a follow-up rather than a blocker.
-
-5. **AtomsBase charge property name.** Still hard-coded to `:charge`;
-   generalise when needed.
-
-6. **Vector-charge concrete instance.** Prototype covers `M = 1`
-   everywhere; a single trivial `M = 2` test (e.g. identity-times-Coulomb)
-   would confirm the type plumbing. Not done.
-
-7. **GPU port via `KernelAbstractions.jl`.** Code on `perf` is now
-   kernel-shaped (per-axis dispatch at codegen, no closures in hot
-   loops, allocation-free anter/interpolate). The port should be
-   mostly mechanical; `grid_cutoff!` is the obvious first target.
-
----
-
-## 8. Rough effort estimate
-
-| Phase | Description                                | Effort |
-|-------|--------------------------------------------|--------|
-| 1     | Kernels, basis, splitting primitives       | 1 day  |
-| 2     | Naive reference (multi-kernel, mixed BC)   | ½ day  |
-| 2b    | Ewald reference (`src/reference/`)         | ½ day  |
-| 3     | Grid + anterp/interp (vector charges)      | 1 day  |
-| 4     | Restriction / prolongation                 | ½ day  |
-| 5     | Grid-cutoff convolution (matrix stencil)   | 1 day  |
-| 6     | Top level (all BCs, neutralising bg)       | ½ day  |
-| 7     | Low-level end-to-end                       | 1 day  |
-| 8     | AtomsCalculators wrapper + AtomsBase glue  | ½ day  |
-| —     | **CPU prototype total**                    | **≈ 6½ days** |
-| B     | KernelAbstractions port + GPU CI           | 2–3 days |
-| B+    | GPU optimisation                           | open-ended |
+See [`PRIORITIES.md`](PRIORITIES.md) for the active task list (KA
+migration, general splittings, Tune cleanup, etc.) and recommended
+sequencing.

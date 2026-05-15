@@ -1,26 +1,33 @@
-# Naive references
+# `MultilevelSummation.Reference` submodule
+
+The `Reference` submodule hosts the two absolute baseline
+implementations used by the test suite and the tuning scripts:
+
+- `naive_energy` / `naive_energy_forces` — direct `O(N²)` sum,
+  generic in the pair kernel and boundary conditions.
+- `ewald_energy` / `ewald_energy_forces` — naive 3D Ewald reference
+  for fully periodic Coulomb.
+
+```julia
+using MultilevelSummation.Reference: naive_energy, naive_energy_forces
+using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
+```
 
 ## `naive_energy` / `naive_energy_forces`
 
-Direct `O(N²)` reference implementations used by the test suite and
-useful for small-system sanity checks. Generic in the pair kernel and
-boundary conditions.
+Useful for small-system sanity checks. Periodic axes are handled by
+truncating the lattice-image sum to a user-supplied `R_cut`.
 
 ```@docs
-naive_energy
-naive_energy_forces
+MultilevelSummation.Reference.naive_energy
+MultilevelSummation.Reference.naive_energy_forces
 ```
 
-## `MultilevelSummation.Reference` submodule
-
-A naive 3D Ewald reference for fully periodic Coulomb lives in the
-public `MultilevelSummation.Reference` submodule:
+## `ewald_energy` / `ewald_energy_forces`
 
 ```julia
-using MultilevelSummation.Reference: ewald_energy, ewald_energy_forces
-
-U      = ewald_energy(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
-U, F   = ewald_energy_forces(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
+U     = ewald_energy(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
+U, F  = ewald_energy_forces(positions, charges, cell; α=0.7, R_cut=10.0, k_cut=12.0)
 ```
 
 For a convenient auto-tuned call (it picks ``α``, ``R_\text{cut}``,

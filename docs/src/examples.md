@@ -17,6 +17,7 @@ cell     = zero(SMatrix{3,3,Float64})            # unused for open BC
 periodic = (false, false, false)
 
 # Baseline: direct O(N²) Coulomb
+using MultilevelSummation.Reference: naive_energy
 K = Coulomb()
 U_naive = naive_energy(positions, charges, cell, periodic, K)
 
@@ -34,6 +35,7 @@ monotonically.
 
 ```@example convergence
 using MultilevelSummation, StaticArrays, Random
+using MultilevelSummation.Reference: naive_energy
 Random.seed!(0xC0FFEE)
 
 positions = [SVector{3,Float64}((rand(3) .* 2)...) for _ in 1:8]

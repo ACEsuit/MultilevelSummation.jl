@@ -1,5 +1,6 @@
 using Test
 using MultilevelSummation
+using MultilevelSummation.Reference: naive_energy, naive_energy_forces
 using StaticArrays
 using StableRNGs
 

@@ -65,7 +65,7 @@ where ``K_\text{long}(0) = \sum_{l=1}^L K_l(0)`` is computed by
 `kernel_self_value(splitting, Val(D), T)`. The self term has no spatial
 gradient, so it contributes nothing to forces.
 
-## Limitations of the current prototype
+## Current limitations
 
 - Cells are required to be **orthorhombic** in the naive reference, the
   grid hierarchy, and the Ewald reference. General triclinic cells need
@@ -81,4 +81,7 @@ gradient, so it contributes nothing to forces.
   when the grid is fixed). Periodic BC has a cell-fixed grid and
   matches FD to machine precision.
 
-See `PLAN.md` for the longer-form plan and open design questions.
+See [`PLAN.md`](https://github.com/ACEsuit/MultilevelSummation.jl/blob/main/PLAN.md)
+for the architectural design contract and
+[`PRIORITIES.md`](https://github.com/ACEsuit/MultilevelSummation.jl/blob/main/PRIORITIES.md)
+for the live task list / open design questions.

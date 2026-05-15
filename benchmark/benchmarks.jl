@@ -1,6 +1,7 @@
 using BenchmarkTools
 using MultilevelSummation
 using MultilevelSummation.Tune: build_nacl, build_h2o
+using MultilevelSummation.Reference: naive_energy
 using StaticArrays
 using StableRNGs
 using Random
@@ -21,10 +22,9 @@ using Random
 # with `StableRNG`-seeded charges, since their purpose is to track
 # operator-level codegen rather than system-scale behaviour.
 #
-# All defaults are CI-friendly (≲ a few seconds total). PERF_NOTES.md
-# tracks history; note that the system-level baselines are now realistic
-# fixtures, so judge comparisons against pre-refactor commits are not
-# meaningful.
+# All defaults are CI-friendly (≲ a few seconds total). The system-level
+# baselines are realistic fixtures, so `PkgBenchmark.judge` comparisons
+# against pre-Phase-A commits are not meaningful.
 
 const SUITE = BenchmarkGroup()
 
