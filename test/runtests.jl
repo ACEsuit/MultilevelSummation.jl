@@ -14,4 +14,11 @@ using Test
     include("test_calculator.jl")
     include("test_systems.jl")
     include("test_tune.jl")
+    include("test_ka_gridcutoff.jl")
+    include("test_ka_transfer.jl")
+    include("test_ka_toplevel.jl")
+    include("test_ka_interp.jl")
+    include("test_ka_anterp.jl")
+    include("test_ka_shortrange.jl")
+    include("test_ka_core.jl")
 end

@@ -108,7 +108,7 @@ end
 # --- End-to-end MSM ---------------------------------------------------------
 
 """
-    msm_energy(positions, charges, cell, periodic, calc) -> energy::T
+    msm_energy(positions, charges, cell, periodic, calc; backend=nothing) -> energy::T
 
 Compute the MSM-approximated energy
     U^MSM = ½ Σ_{i≠j} q_i q_j K(r_ij)
@@ -116,27 +116,38 @@ for charges `q_i` at positions `r_i` in an orthorhombic `cell` with per-axis
 `periodic` flags, using the calculator `calc`.
 
 Only `j = i` is excluded (no bonded-pair exclusions in the prototype).
+
+The `backend` kwarg routes the computation through the KernelAbstractions-
+backed path: `nothing` (default) keeps the legacy OhMyThreads CPU code,
+`KA.CPU()` forces the KA path on plain `Array`s (for testing), and on
+`AbstractGPUArray` inputs the backend is auto-detected so the kwarg can
+be left unset.
 """
 function msm_energy(positions::AbstractVector{SVector{D,T}},
                     charges::AbstractVector{T},
                     cell::SMatrix{D,D,T},
                     periodic::NTuple{D,Bool},
-                    calc::MSMCalculator{T}) where {D, T<:AbstractFloat}
-    U, _ = _msm_compute(positions, charges, cell, periodic, calc; want_forces=false)
+                    calc::MSMCalculator{T};
+                    backend = nothing) where {D, T<:AbstractFloat}
+    U, _ = _msm_compute(positions, charges, cell, periodic, calc;
+                        want_forces = false, backend)
     return U
 end
 
 """
-    msm_energy_forces(positions, charges, cell, periodic, calc) -> (energy, forces)
+    msm_energy_forces(positions, charges, cell, periodic, calc; backend=nothing) -> (energy, forces)
 
-Compute MSM energy and analytic per-particle forces.
+Compute MSM energy and analytic per-particle forces. See `msm_energy`
+for the meaning of `backend`.
 """
 function msm_energy_forces(positions::AbstractVector{SVector{D,T}},
                            charges::AbstractVector{T},
                            cell::SMatrix{D,D,T},
                            periodic::NTuple{D,Bool},
-                           calc::MSMCalculator{T}) where {D, T<:AbstractFloat}
-    return _msm_compute(positions, charges, cell, periodic, calc; want_forces=true)
+                           calc::MSMCalculator{T};
+                           backend = nothing) where {D, T<:AbstractFloat}
+    return _msm_compute(positions, charges, cell, periodic, calc;
+                        want_forces = true, backend)
 end
 
 function _msm_compute(positions::AbstractVector{SVector{D,T}},
@@ -144,7 +155,13 @@ function _msm_compute(positions::AbstractVector{SVector{D,T}},
                       cell::SMatrix{D,D,T},
                       periodic::NTuple{D,Bool},
                       calc::MSMCalculator{T};
-                      want_forces::Bool) where {D, T<:AbstractFloat}
+                      want_forces::Bool,
+                      backend = nothing) where {D, T<:AbstractFloat}
+    backend = _resolve_backend(positions, charges, backend)
+    if backend !== nothing
+        return _msm_compute_ka(positions, charges, cell, periodic, calc;
+                               want_forces, backend)
+    end
     @assert length(positions) == length(charges)
     N = length(positions)
     splitting = calc.splitting
@@ -211,49 +228,5 @@ function _msm_compute(positions::AbstractVector{SVector{D,T}},
     end
 end
 
-# Compute short-range energy/forces and (if requested) the long-range forces
-# from the interpolated grid potential gradient.
-function _short_range_and_long_forces(positions::AbstractVector{SVector{D,T}},
-                                      charges::AbstractVector{T},
-                                      cell::SMatrix{D,D,T},
-                                      periodic::NTuple{D,Bool},
-                                      splitting,
-                                      basis,
-                                      grids,
-                                      es,
-                                      calc::MSMCalculator{T};
-                                      want_forces::Bool,
-                                      a::T) where {D, T<:AbstractFloat}
-    N = length(positions)
-    image_ranges = _image_ranges(cell, periodic, a)
-    a² = a * a
-
-    U_short = zero(T)
-    F_short = zeros(SVector{D,T}, N)
-    @inbounds for i in 1:N, j in 1:N
-        qiqj = charges[i] * charges[j]
-        for n in Iterators.product(image_ranges...)
-            (i == j && all(==(0), n)) && continue
-            shift = _shift(cell, n)
-            r     = positions[i] - positions[j] + shift
-            sum(abs2, r) > a² && continue
-            U_short += qiqj * short_range(splitting, r)
-            if want_forces
-                F_short[i] -= qiqj * short_range_grad(splitting, r)
-            end
-        end
-    end
-    U_short *= T(1//2)
-
-    # Long-range force: F_i_long = -q_i · interpolate_grad(e^1) at r_i
-    F_long = zeros(SVector{D,T}, N)
-    if want_forces
-        interp_grads = zeros(SVector{D,T}, N)
-        interpolate_grad!(interp_grads, positions, es[1], grids[1], basis)
-        @inbounds for i in 1:N
-            F_long[i] = -charges[i] * interp_grads[i]
-        end
-    end
-
-    return U_short, F_short, F_long
-end
+# Short-range pair sum + long-range force gather live in `shortrange.jl`.
+# Their KA-backed counterparts live in `shortrange_ka.jl`.

@@ -36,8 +36,28 @@ include("gridcutoff.jl")
 # Phase 6: top-level direct sum
 include("toplevel.jl")
 
-# Phase 7: end-to-end MSM assembly + calculator
+# KA-path scaffolding: backend resolution + stubs that `*_ka.jl` files
+# extend. Must be loaded before `core.jl` so the dispatch shim resolves.
+include("ka_common.jl")
+
+# Phase 7: end-to-end MSM assembly + calculator. Defines `MSMCalculator`,
+# which `shortrange.jl` and the `*_ka.jl` files refer to in signatures.
 include("core.jl")
+
+# Short-range direct pair sum (CPU path) — extracted from core.jl so the
+# KA-backed `shortrange_ka.jl` can sit alongside.
+include("shortrange.jl")
+
+# KA-backed operator implementations. These define methods on the same
+# generic functions as their non-KA siblings (dispatched via the backend
+# kwarg or array type). Loaded after the CPU paths so method tables are
+# fully populated.
+include("anterp_ka.jl")
+include("transfer_ka.jl")
+include("gridcutoff_ka.jl")
+include("toplevel_ka.jl")
+include("shortrange_ka.jl")
+include("core_ka.jl")
 
 # Phase 8: AtomsCalculators / AtomsBase wrapper
 include("calculator.jl")

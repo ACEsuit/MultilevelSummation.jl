@@ -17,13 +17,23 @@ sweep API (`MultilevelSummation.Tune`) for accuracy-vs-cost analysis.
 **Highly experimental** 
 — the API is not stable
 - only the Coulomb (`1/r`) splitting is currently implemented
-- missing GPU port via `KernelAbstractions.jl`
 - provides forces, but no ChainRules integration yet
 
-The hot operators are multi-threaded via
-[OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl). For
-best performance launch Julia with `julia -t auto` (or set
-`JULIA_NUM_THREADS`).
+The default CPU path uses
+[OhMyThreads.jl](https://github.com/JuliaFolds2/OhMyThreads.jl); launch
+Julia with `julia -t auto` (or set `JULIA_NUM_THREADS`) for parallelism.
+A second implementation path is available through
+[KernelAbstractions.jl](https://github.com/JuliaGPU/KernelAbstractions.jl),
+selected per call from the input array type or via a
+`backend = <KA backend>` kwarg on `msm_energy` /
+`msm_energy_forces`. The KA path covers every hot operator (anter- /
+interpolation, restriction / prolongation, grid-cutoff convolution,
+top-level direct sum) plus the short-range pair sum, the latter via
+[NeighbourLists.jl](https://github.com/JuliaMolSim/NeighbourLists.jl)'s
+GPU-friendly cell list. Pass `AbstractGPUArray` positions / charges
+(e.g. `CuArray`s) and the backend is auto-detected; pass `backend =
+KA.CPU()` to validate the KA path on plain `Array`s without GPU
+hardware.
 
 See the [documentation](https://ACEsuit.github.io/MultilevelSummation.jl/dev/) 
 for details, examples, and the implementation plan.
