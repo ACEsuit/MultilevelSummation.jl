@@ -47,6 +47,8 @@ function parse_args(args)
         :systems            => [:nacl, :h2o],
         :budget             => parse(Float64, get(ENV, "MSM_SCALING_BUDGET_S", "60")),
         :skip_gpu           => false,
+        :skip_cpu           => false,
+        :max_n              => typemax(Int),
         :output             => nothing,
         :do_accuracy_check  => true,
     )
@@ -62,6 +64,10 @@ function parse_args(args)
             cfg[:budget] = parse(Float64, args[i+1]); i += 2
         elseif a == "--skip-gpu"
             cfg[:skip_gpu] = true; i += 1
+        elseif a == "--skip-cpu"
+            cfg[:skip_cpu] = true; i += 1
+        elseif a == "--max-n"
+            cfg[:max_n] = parse(Int, args[i+1]); i += 2
         elseif a == "--output"
             cfg[:output] = args[i+1]; i += 2
         elseif a == "--no-accuracy-check"
@@ -156,7 +162,11 @@ const SAMPLE_TIMEOUT_MULT = 1.5     # if first sample > budget × this, no furth
 
 build_fixture(::Val{:nacl}, n_super) = build_nacl(n_super; σ = 0.1,
                                                   rng = MersenneTwister(0xBEEF))
+# d_min = 2.4 (slightly under TIP3P's 2.7) keeps the Bridson sampler from
+# jamming at moderate-to-large boxes (~0.0334 mol/Å³ with d_min=2.7 hits
+# the algorithm's fallback limit around box ≥ 64 Å).
 build_fixture(::Val{:h2o},  box)     = build_h2o(box;
+                                                  d_min = 2.4,
                                                   rng = MersenneTwister(0xBEEF))
 
 hyperparams(::Val{:nacl}) = (h = NACL_H, a = NACL_A)
@@ -309,6 +319,20 @@ end
 
 function main()
     rows = Vector{Dict{String,Any}}()
+    out  = csv_path(CFG)
+    # Open the CSV up front and flush after each row so partial results
+    # are preserved if the run is interrupted (e.g. by a budget blowup
+    # mid-sweep).
+    isdir(dirname(out)) || mkpath(dirname(out))
+    io = open(out, "w")
+    println(io, join(CSV_HEADER, ","))
+    flush(io)
+
+    function emit!(row)
+        push!(rows, row)
+        write_row(io, row)
+        flush(io)
+    end
 
     for system in CFG[:systems]
         sweep = system == :nacl ? NACL_NSUPER_SWEEP :
@@ -316,13 +340,48 @@ function main()
                 error("unknown system: $system")
         for backend_label in ("cpu", "gpu")
             (backend_label == "gpu" && !GPU_AVAILABLE) && continue
+            (backend_label == "gpu" && CFG[:skip_gpu]) && continue
+            (backend_label == "cpu" && CFG[:skip_cpu]) && continue
             @info "Backend sweep" system backend_label
             cpu_gpu_accuracy_pair = Float64[]
+            prev_N        = 0
+            prev_median   = 0.0
             for size_param in sweep
+                # Hard cap on atom count
+                # (estimate N before building, just for NaCl/H2O sweeps)
+                est_N = system == :nacl ? 8 * size_param^3 :
+                        round(Int, 0.0334 * size_param^3) * 3
+                if est_N > CFG[:max_n]
+                    @info "Skipping (max-n cap)" system backend_label N_est = est_N
+                    emit!(_budget_skip_row(system, sweep, size_param,
+                                           backend_label,
+                                           hyperparams(Val(system))))
+                    break
+                end
+                # Predictive skip: if previous cell already cost
+                # ≥ budget/8 wall-clock, the next size (~8× atoms,
+                # ~8× grid cells) is overwhelmingly likely to blow
+                # the budget. Skip without running rather than burning
+                # an hour confirming it.
+                if prev_median > 0.0 && prev_median * 8 > CFG[:budget]
+                    @info("Predictive skip; prior cell suggests next exceeds budget",
+                          system, backend_label,
+                          prev_N, prev_median_s = prev_median,
+                          predicted_s = prev_median * 8)
+                    emit!(_budget_skip_row(system, sweep, size_param,
+                                           backend_label,
+                                           hyperparams(Val(system))))
+                    break
+                end
+
+                t0 = time()
                 row, m = run_cell(system, size_param, backend_label;
                                    framework = GPU_FRAMEWORK,
                                    budget    = CFG[:budget])
-                push!(rows, row)
+                wall = time() - t0
+                @info "Cell complete" system backend_label N = row["N"] wall_s = wall samples = m.samples median_s = m.median
+                emit!(row)
+
                 if m.samples > 0 && CFG[:do_accuracy_check] && size_param == sweep[1]
                     push!(cpu_gpu_accuracy_pair, m.U)
                 end
@@ -330,15 +389,16 @@ function main()
                     @info("Budget exceeded; skipping larger sizes",
                           system, backend_label,
                           median_s = m.median, size_param = size_param)
-                    push!(rows, _budget_skip_row(system, sweep, size_param,
-                                                  backend_label,
-                                                  hyperparams(Val(system))))
+                    emit!(_budget_skip_row(system, sweep, size_param,
+                                           backend_label,
+                                           hyperparams(Val(system))))
                     break
                 end
+                prev_N = row["N"]; prev_median = m.median
             end
             # Accuracy spot check at smallest N
             if CFG[:do_accuracy_check] && length(cpu_gpu_accuracy_pair) == 1 &&
-               backend_label == "gpu" && GPU_AVAILABLE
+               backend_label == "gpu" && GPU_AVAILABLE && !CFG[:skip_cpu]
                 U_cpu = _smallest_cpu_energy(rows, system)
                 U_gpu = cpu_gpu_accuracy_pair[1]
                 rel = abs(U_cpu - U_gpu) / max(abs(U_cpu), 1e-12)
@@ -351,13 +411,7 @@ function main()
         end
     end
 
-    out = csv_path(CFG)
-    open(out, "w") do io
-        println(io, join(CSV_HEADER, ","))
-        for row in rows
-            write_row(io, row)
-        end
-    end
+    close(io)
     @info "Wrote $(length(rows)) rows" path = out
     return rows
 end
