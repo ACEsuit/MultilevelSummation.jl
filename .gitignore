@@ -8,6 +8,10 @@ benchmark/Manifest.toml
 tuning/Manifest.toml
 tuning/tune_*_results.csv
 tuning/plots/
+scaling/Manifest.toml
+scaling/results/*.csv
+scaling/results/*.json
+scaling/plots/
 LocalPreferences.toml
 
 # Per-developer environment overrides
